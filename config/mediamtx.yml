@@ -1,0 +1,24 @@
+logLevel: debug
+logDestinations: [stdout]
+
+# RTMP — ffmpeg publica aqui
+rtmp: yes
+rtmpAddress: :1935
+
+# HLS — frontend e player consomem daqui  
+hls: yes
+hlsAddress: :8888
+hlsAlwaysRemux: no
+hlsVariant: lowLatency
+hlsSegmentCount: 7
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+
+# Desabilita o que não usa
+rtsp: no
+webrtc: no
+srt: no
+
+paths:
+  all:
+    source: publisher

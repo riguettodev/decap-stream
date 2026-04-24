@@ -1,0 +1,18 @@
+services:
+  decap-stream:
+    image: git.kralot.cloud/decap-stream:latest
+    container_name: decap-stream
+    restart: unless-stopped
+    shm_size: "2gb"
+    environment:
+      TZ: America/Sao_Paulo
+    ports:
+      - "3000:3000"   # Web UI
+      - "1935:1935"   # RTMP (MediaMTX)
+      - "8888:8888"   # HLS  (MediaMTX)
+      - "6081:6081"   # VNC  (noVNC)
+    volumes:
+      - decap-stream:/app/data
+
+volumes:
+  decap-stream:
