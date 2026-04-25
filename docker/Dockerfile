@@ -3,7 +3,8 @@ FROM node:22-alpine AS builder
 WORKDIR /build
 
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
 
 COPY src/ ./src/
 COPY public/ ./public/
@@ -16,8 +17,13 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 ARG MEDIAMTX_VERSION=1.17.1
 
-# Tudo em um único RUN para que o cleanup seja efetivo no tamanho final
-RUN apt-get update \
+# Cache mounts: .deb baixados e índice de pacotes ficam no cache do BuildKit (não entram na imagem)
+# /var/lib/apt/lists: índice apt (apt-get update) — seguro cachear
+# /var/cache/apt: .deb baixados — seguro cachear
+# /var/lib/apt inteiro NÃO é cacheado: extended_states rastreia auto/manual e corromperia o estado entre builds
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update \
     && apt-get install -y --no-install-recommends \
         xvfb x11vnc novnc websockify \
         ffmpeg supervisor xdotool tzdata \
@@ -34,11 +40,11 @@ RUN apt-get update \
         -o /tmp/mediamtx.tar.gz \
     && tar -xzf /tmp/mediamtx.tar.gz -C /usr/local/bin mediamtx \
     \
-    # Remove ferramentas usadas só no build
+    # Remove apenas as ferramentas de build — qualquer remoção além disso causa cascata em deps do chromium/novnc
     && apt-get remove -y curl gnupg \
     && apt-get autoremove -y \
     && apt-get clean \
-    && find /usr/lib/chromium/locales -name '*.pak' ! -name 'en-US.pak' -delete \
+    && find /usr/lib/chromium/locales -name '*.pak' ! -name 'en-US.pak' -delete 2>/dev/null || true \
     \
     # Chromium managed policy: disable password manager and autofill save prompts
     && mkdir -p /etc/chromium/policies/managed \

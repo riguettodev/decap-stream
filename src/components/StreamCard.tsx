@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { MoreHorizontal, Play, Globe, Monitor, Pencil, RotateCcw, Square, Trash2, Circle, Copy, Check, Video, ImageUp, GripVertical } from "lucide-react"
+import { MoreHorizontal, Play, Globe, Monitor, Pencil, RotateCcw, Square, Trash2, Circle, Copy, Check, Video, ImageUp, GripVertical, Wrench } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Stream } from "@/types/stream"
 import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities"
@@ -229,6 +229,9 @@ export function StreamCard({ stream, status, localStatus, cardSize = "md", onRef
                   </button>
                   <button onClick={() => action("restart", "restarting")} className={menuItem}>
                     <RotateCcw className="w-3.5 h-3.5" /> Restart
+                  </button>
+                  <button onClick={() => action("recreate", "restarting")} className={menuItem}>
+                    <Wrench className="w-3.5 h-3.5" /> Recreate
                   </button>
                   {status?.ffmpeg === "RUNNING" || localStatus === "restarting" ? (
                     <button onClick={() => action("stop", "stopping")} className={menuItem}>

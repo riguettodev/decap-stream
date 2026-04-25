@@ -42,6 +42,7 @@ export function normalizeScale(scale: string): string {
 export function provisionStream(stream: Stream): void {
   const dir = streamDir(stream.id)
   fs.mkdirSync(path.join(dir, "chrome-profile"), { recursive: true })
+  fs.mkdirSync(path.join(DATA_DIR, "logs", stream.id), { recursive: true })
 
   const vars: Record<string, string | number> = {
     STREAM_ID:    stream.id,
@@ -64,14 +65,8 @@ export function provisionStream(stream: Stream): void {
     PASS:         stream.pass ?? "",
   }
 
-  const autologinTpl = fs.readFileSync("/opt/scripts/autologin.template.sh", "utf-8")
-  const autologinPath = path.join(dir, "autologin.sh")
-  fs.writeFileSync(autologinPath, render(autologinTpl, vars), "utf-8")
-  fs.chmodSync(autologinPath, 0o755)
-
   const confTpl = fs.readFileSync("/opt/scripts/stream.template.conf", "utf-8")
-  const confPath = path.join(dir, "stream.conf")
-  fs.writeFileSync(confPath, render(confTpl, vars), "utf-8")
+  fs.writeFileSync(path.join(dir, "stream.conf"), render(confTpl, vars), "utf-8")
 
   fs.mkdirSync(VNC_TOKENS_DIR, { recursive: true })
   fs.writeFileSync(
@@ -82,6 +77,16 @@ export function provisionStream(stream: Stream): void {
 
   supervisorctl("reread")
   supervisorctl("update")
+}
+
+export function recreateStream(id: string): void {
+  const stream = getStream(id)
+  if (!stream) return
+  stopStream(id)
+  const dir = streamDir(id)
+  fs.rmSync(path.join(dir, "chrome-profile"), { recursive: true, force: true })
+  provisionStream(stream)
+  startStream(id)
 }
 
 export function startStream(id: string): void {

@@ -1,0 +1,33 @@
+#!/bin/bash
+
+[ -z "${LOGIN_USER:-}" ] && exit 0
+
+sleep "${STREAM_DELAY:-0}"
+
+CURRENT_URL=$(node -e "
+const http = require('http');
+http.get('http://localhost:${DEBUG_PORT}/json', res => {
+  let d = '';
+  res.on('data', c => d += c);
+  res.on('end', () => {
+    try {
+      const tabs = JSON.parse(d);
+      const page = tabs.find(t => t.type === 'page');
+      process.stdout.write(page ? page.url : '');
+    } catch { process.stdout.write(''); }
+  });
+}).on('error', () => process.stdout.write(''));
+" 2>/dev/null)
+
+if [ -n "$CURRENT_URL" ] && ! echo "$CURRENT_URL" | grep -qiE '/(login|signin|sign-in|auth|sso|oauth)'; then
+  exit 0
+fi
+
+DISPLAY=${DISPLAY} xdotool search --sync --onlyvisible --class chromium windowfocus windowraise
+sleep 1
+
+DISPLAY=${DISPLAY} xdotool type --clearmodifiers --delay 50 "${LOGIN_USER}"
+DISPLAY=${DISPLAY} xdotool key Tab
+sleep 0.3
+DISPLAY=${DISPLAY} xdotool type --clearmodifiers --delay 50 "${LOGIN_PASS}"
+DISPLAY=${DISPLAY} xdotool key Return

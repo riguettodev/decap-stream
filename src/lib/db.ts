@@ -3,7 +3,7 @@ import path from "path"
 import type { Stream } from "@/types/stream"
 
 const DATA_DIR = process.env.DATA_DIR ?? "/app/data"
-const STREAMS_FILE = path.join(DATA_DIR, "streams.json")
+const STREAMS_FILE = path.join(DATA_DIR, "streams", "streams.json")
 
 function ensureFile() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true })

@@ -14,7 +14,8 @@ services:
       - "8888:8888"   # HLS  (MediaMTX)
       - "6080:6080"   # VNC  (noVNC)
     volumes:
-      - decap-stream:/app/data
+      - streams:/app/data/streams # Persistent: streams.json, chrome profiles, thumbs
+      # - logs:/app/data/logs       # Optional
 
 volumes:
-  decap-stream:
+  streams:

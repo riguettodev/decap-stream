@@ -9,7 +9,7 @@ build:
 		echo "❌ TAG não definida. Use ./build.sh ou passe TAG=x.x.x"; \
 		exit 1; \
 	fi
-	docker build --no-cache \
+	docker build \
 		-f Dockerfile \
 		-t $(IMAGE):$(TAG) \
 		..
