@@ -8,14 +8,14 @@ type Ctx = { params: Promise<{ id: string }> }
 export async function GET(_req: Request, { params }: Ctx) {
   const { id } = await params
   const stream = getStream(id)
-  if (!stream) return NextResponse.json({ error: "não encontrado" }, { status: 404 })
+  if (!stream) return NextResponse.json({ error: "not found" }, { status: 404 })
   return NextResponse.json(stream)
 }
 
 export async function PATCH(req: Request, { params }: Ctx) {
   const { id } = await params
   const stream = getStream(id)
-  if (!stream) return NextResponse.json({ error: "não encontrado" }, { status: 404 })
+  if (!stream) return NextResponse.json({ error: "not found" }, { status: 404 })
 
   const body = (await req.json()) as StreamUpdate
   // id e portas não podem ser alterados via PATCH
@@ -32,7 +32,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
 export async function DELETE(_req: Request, { params }: Ctx) {
   const { id } = await params
-  if (!getStream(id)) return NextResponse.json({ error: "não encontrado" }, { status: 404 })
+  if (!getStream(id)) return NextResponse.json({ error: "not found" }, { status: 404 })
 
   removeStream(id)
   deleteStream(id)

@@ -1,0 +1,18 @@
+# Dev
+node_modules
+.next
+npm-debug.log*
+
+# Git
+.git
+.gitignore
+
+# Docker
+.dockerignore
+
+# Desnecessário no contexto de build
+README.md
+*.sh
+.env*
+.vscode
+*.md

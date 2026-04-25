@@ -9,8 +9,8 @@ export async function GET(req: Request) {
 
   const lines = ["#EXTM3U"]
   for (const s of streams) {
-    lines.push(`#EXTINF:-1,${s.name}`)
-    lines.push(`http://${host}:${port}/live/${s.id}/index.m3u8`)
+    lines.push(`#EXTINF:-1 tvg-id="${s.id}" tvg-name="${s.name}" group-title="DecapStream",${s.name} [${s.id}] ${s.resolution} ${s.fps}fps`)
+    lines.push(`http://${host}:${port}/live/${s.id}`)
   }
 
   return new Response(lines.join("\n"), {

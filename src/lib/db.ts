@@ -40,7 +40,6 @@ export function deleteStream(id: string): void {
 export function allocatePorts(): {
   display: string
   vncPort: number
-  novncPort: number
   debugPort: number
 } {
   const streams = readStreams()
@@ -52,7 +51,6 @@ export function allocatePorts(): {
   return {
     display: `:${n}`,
     vncPort: 5900 + n,
-    novncPort: 6080 + n,
     debugPort: 9221 + n,
   }
 }

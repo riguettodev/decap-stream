@@ -2,22 +2,49 @@
 
 import { Suspense } from "react"
 import { useParams, useSearchParams, useRouter } from "next/navigation"
-import { useEffect, useRef, useState } from "react"
-import Script from "next/script"
+import { useEffect, useRef, useState, useCallback } from "react"
 import { ArrowLeft } from "lucide-react"
 
-type Mode = "hls" | "m3u8" | "html"
+type Mode = "hls" | "html"
 
 declare global {
-  interface Window {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    Hls: any
-  }
+  interface Window { Hls: any }
 }
 
-function HLSPlayer({ src }: { src: string }) {
+function BackButton({ onClick }: { onClick: () => void }) {
+  const [visible, setVisible] = useState(true)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const show = useCallback(() => {
+    setVisible(true)
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => setVisible(false), 5000)
+  }, [])
+
+  useEffect(() => {
+    show()
+    window.addEventListener("mousemove", show)
+    return () => {
+      window.removeEventListener("mousemove", show)
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+  }, [show])
+
+  return (
+    <button
+      onClick={onClick}
+      style={{ opacity: visible ? 1 : 0, transition: "opacity 0.4s" }}
+      className="absolute top-4 left-4 z-20 flex items-center gap-1.5 text-sm text-white bg-black/40 px-3 py-1.5 rounded-lg cursor-pointer"
+    >
+      <ArrowLeft className="w-4 h-4" /> Back
+    </button>
+  )
+}
+
+// HLS e M3U8 usam a mesma lógica — HLS.js carregado inline via fetch, não via <Script>
+function VideoPlayer({ src, controls }: { src: string; controls?: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const hlsRef = useRef<unknown>(null)
+  const hlsRef = useRef<any>(null)
   const [msg, setMsg] = useState("")
 
   function showMsg(text: string) {
@@ -25,102 +52,86 @@ function HLSPlayer({ src }: { src: string }) {
     setTimeout(() => setMsg(""), 4000)
   }
 
-  function load() {
-    if (!videoRef.current || !window.Hls) return
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const Hls = window.Hls as any
-    if (hlsRef.current) (hlsRef.current as { destroy: () => void }).destroy()
+  const load = useCallback((Hls: any) => {
+    const v = videoRef.current
+    if (!v) return
+    if (hlsRef.current) hlsRef.current.destroy()
     const hls = new Hls({
-      liveSyncDurationCount: 2,
-      liveMaxLatencyDurationCount: 4,
-      manifestLoadingTimeOut: 10000,
-      manifestLoadingMaxRetry: 10,
-      fragLoadingTimeOut: 10000,
+      liveSyncDurationCount: 3,
+      liveMaxLatencyDurationCount: 6,
+      manifestLoadingTimeOut: 15000,
+      manifestLoadingMaxRetry: 20,
+      manifestLoadingRetryDelay: 1000,
+      fragLoadingTimeOut: 15000,
       fragLoadingMaxRetry: 10,
     })
     hlsRef.current = hls
     hls.loadSource(src)
-    hls.attachMedia(videoRef.current)
-    hls.on(Hls.Events.MANIFEST_PARSED, () => videoRef.current?.play())
-    hls.on(Hls.Events.ERROR, (_: unknown, d: { fatal: boolean; type: string }) => {
-      if (d.fatal) {
-        showMsg(`Erro: ${d.type} — reconectando...`)
-        setTimeout(load, 3000)
-      }
+    hls.attachMedia(v)
+    hls.on(Hls.Events.MANIFEST_PARSED, () => v.play())
+    hls.on(Hls.Events.ERROR, (_: any, d: any) => {
+      if (d.fatal) { showMsg(`Error: ${d.type} — reconnecting...`); setTimeout(() => load(Hls), 3000) }
     })
-  }
+  }, [src])
 
   useEffect(() => {
+    const v = videoRef.current
+    if (!v) return
+
+    // Carrega HLS.js dinamicamente via import para evitar problemas com <Script>
+    const script = document.createElement("script")
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.4.12/hls.min.js"
+    script.onload = () => {
+      const Hls = window.Hls
+      if (Hls.isSupported()) {
+        load(Hls)
+      } else if (v.canPlayType("application/vnd.apple.mpegurl")) {
+        // Safari nativo
+        v.src = src
+        v.play()
+      }
+    }
+    document.head.appendChild(script)
+
+    // stall detection
     let last = 0
     const interval = setInterval(() => {
-      const v = videoRef.current
       if (!v) return
-      if (v.currentTime === last && !v.paused) {
-        showMsg("Stream travada — recarregando...")
-        load()
-      }
+      if (v.currentTime === last && !v.paused) { showMsg("Stream stalled — reloading..."); hlsRef.current && load(window.Hls) }
       last = v.currentTime
     }, 10000)
-    return () => clearInterval(interval)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+
+    return () => {
+      clearInterval(interval)
+      hlsRef.current?.destroy()
+      document.head.removeChild(script)
+    }
+  }, [load, src])
 
   return (
     <>
-      <Script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.4.12/hls.min.js" onLoad={load} />
-      <video ref={videoRef} autoPlay muted playsInline className="w-screen h-screen object-contain bg-black" />
+      <video ref={videoRef} autoPlay muted playsInline controls={controls} className="w-screen h-screen object-contain bg-black" />
       {msg && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-black/75 text-white px-5 py-2 rounded-lg text-sm z-10">
-          {msg}
-        </div>
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-black/75 text-white px-5 py-2 rounded-lg text-sm z-10">{msg}</div>
       )}
     </>
   )
 }
 
-function M3U8Player({ src }: { src: string }) {
-  const videoRef = useRef<HTMLVideoElement>(null)
-  useEffect(() => {
-    const v = videoRef.current
-    if (!v) return
-    if (v.canPlayType("application/vnd.apple.mpegurl")) {
-      v.src = src
-      v.play()
-    }
-  }, [src])
-  return (
-    <video ref={videoRef} src={src} autoPlay muted playsInline controls className="w-screen h-screen object-contain bg-black" />
-  )
-}
-
-// Componente interno que usa useSearchParams — precisa estar dentro de Suspense
 function PlayerInner() {
   const { id } = useParams<{ id: string }>()
   const searchParams = useSearchParams()
   const router = useRouter()
   const mode = (searchParams.get("mode") ?? "hls") as Mode
-
   const host = typeof window !== "undefined" ? window.location.hostname : "localhost"
-  const hlsSrc = `http://${host}:8888/live/${id}/index.m3u8`
+
+  const streamSrc = `http://${host}:8888/live/${id}/index.m3u8`
 
   return (
     <div className="relative bg-black w-screen h-screen overflow-hidden">
-      <button
-        onClick={() => router.push("/")}
-        className="absolute top-4 left-4 z-20 flex items-center gap-1.5 text-sm text-white/70 hover:text-white bg-black/50 px-3 py-1.5 rounded-lg transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4" /> Voltar
-      </button>
-
-      {mode === "hls"  && <HLSPlayer src={hlsSrc} />}
-      {mode === "m3u8" && <M3U8Player src={hlsSrc} />}
-      {mode === "html" && (
-        <iframe
-          src={`/player-static/${id}`}
-          className="w-screen h-screen border-0"
-          allowFullScreen
-        />
-      )}
+      <BackButton onClick={() => router.push("/")} />
+      {mode === "hls"  && <VideoPlayer src={streamSrc} controls />}
+      {mode === "html" && <iframe src={`/player-static/${id}`} className="w-screen h-screen border-0" allowFullScreen />}
     </div>
   )
 }

@@ -45,13 +45,13 @@ export async function GET(req: NextRequest, { params }: Ctx) {
       hls.attachMedia(document.getElementById('v'));
       hls.on(Hls.Events.MANIFEST_PARSED,function(){document.getElementById('v').play();});
       hls.on(Hls.Events.ERROR,function(e,d){
-        if(d.fatal){showMsg('Erro: '+d.type+' — reconectando...');setTimeout(load,3000);}
+        if(d.fatal){showMsg('Error: '+d.type+' — reconnecting...');setTimeout(load,3000);}
       });
     }
     var last=0;
     setInterval(function(){
       var v=document.getElementById('v');
-      if(v.currentTime===last&&!v.paused){showMsg('Stream travada — recarregando...');load();}
+      if(v.currentTime===last&&!v.paused){showMsg('Stream stalled — reloading...');load();}
       last=v.currentTime;
     },10000);
     load();

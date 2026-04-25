@@ -1,25 +1,96 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { useRouter } from "next/navigation"
-import { Plus, Download, RefreshCw } from "lucide-react"
+import { Plus, Download, RefreshCw, Settings, X } from "lucide-react"
 import { StreamCard } from "@/components/StreamCard"
 import type { Stream } from "@/types/stream"
 
+type CardSize = "sm" | "md" | "lg"
+
+function SkeletonCard({ size = "sm" }: { size?: CardSize }) {
+  const widths = { sm: "max-w-[200px]", md: "max-w-[240px]", lg: "max-w-[300px]" }
+  return (
+    <div className={`rounded-lg border border-border bg-card p-3 flex flex-col gap-2.5 w-full ${widths[size]} animate-pulse`}>
+      <div className="flex justify-between items-start">
+        <div className="flex flex-col gap-1.5">
+          <div className="h-4 w-28 bg-muted rounded" />
+          <div className="h-3 w-16 bg-muted rounded" />
+        </div>
+        <div className="h-3 w-12 bg-muted rounded" />
+      </div>
+      <div className="h-3 w-full bg-muted rounded" />
+      <div className="flex flex-col gap-1.5">
+        {[...Array(4)].map((_, i) => <div key={i} className="h-8 w-full bg-muted rounded" />)}
+      </div>
+    </div>
+  )
+}
+
+// #7 — settings popup
+function SettingsPopup({ cardSize, onCardSize, onClose }: {
+  cardSize: CardSize
+  onCardSize: (s: CardSize) => void
+  onClose: () => void
+}) {
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/50" onClick={onClose} />
+      <div className="fixed top-16 right-6 z-50 w-64 rounded-lg border border-border shadow-2xl p-4 flex flex-col gap-4" style={{ background: "#1c1c1c" }}>
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold">Settings</p>
+          <button onClick={onClose} className="p-1 rounded hover:bg-[#2a2a2a] cursor-pointer transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <p className="text-xs text-muted-foreground tracking-wider">Card size</p>
+          <div className="flex gap-2">
+            {(["sm", "md", "lg"] as CardSize[]).map((s) => (
+              <button
+                key={s}
+                onClick={() => onCardSize(s)}
+                className={`flex-1 py-1.5 rounded border text-xs transition-colors cursor-pointer ${
+                  cardSize === s
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border hover:bg-[#2a2a2a]"
+                }`}
+              >
+                {s === "sm" ? "Small" : s === "md" ? "Medium" : "Big"}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
 export default function GalleryPage() {
-  const router = useRouter()
   const [streams, setStreams] = useState<Stream[]>([])
   const [statuses, setStatuses] = useState<Record<string, Record<string, string>>>({})
+  const [localStatuses, setLocalStatuses] = useState<Record<string, string | null>>({})
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [cardSize, setCardSize] = useState<CardSize>("md")
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
-  const fetchStreams = useCallback(async () => {
+  useEffect(() => {
+    const saved = localStorage.getItem("cardSize") as CardSize | null
+    if (saved) setCardSize(saved)
+  }, [])
+
+  const fetchStreams = useCallback(async (manual = false) => {
+    if (manual) setRefreshing(true)
     const res = await fetch("/api/streams")
     const data: Stream[] = await res.json()
     setStreams(data)
     setLoading(false)
+    if (manual) setRefreshing(false)
   }, [])
 
   const fetchStatuses = useCallback(async (list: Stream[]) => {
+    if (list.length === 0) return
     const results = await Promise.all(
       list.map(async (s) => {
         const res = await fetch(`/api/streams/${s.id}/status`)
@@ -30,9 +101,7 @@ export default function GalleryPage() {
     setStatuses(Object.fromEntries(results))
   }, [])
 
-  useEffect(() => {
-    fetchStreams()
-  }, [fetchStreams])
+  useEffect(() => { fetchStreams() }, [fetchStreams])
 
   useEffect(() => {
     if (streams.length === 0) return
@@ -41,62 +110,76 @@ export default function GalleryPage() {
     return () => clearInterval(interval)
   }, [streams, fetchStatuses])
 
+  const setLocalStatus = useCallback((id: string, s: string | null) => {
+    setLocalStatuses((prev) => ({ ...prev, [id]: s }))
+  }, [])
+
   function downloadPlaylist() {
-    const host = window.location.hostname
-    window.location.href = `/api/streams/playlist?host=${host}&port=8888`
+    window.location.href = `/api/streams/playlist?host=${window.location.hostname}&port=8888`
   }
+
+  const showSkeleton = loading || refreshing
+
+  // #6 — todos os botões do header com mesmo padding e tamanho
+  const btnBase = "flex items-center gap-1.5 text-sm px-3 py-1.5 h-8 rounded border border-border hover:bg-[#2a2a2a] active:bg-[#333] transition-colors cursor-pointer"
+  const btnPrimary = "flex items-center gap-1.5 text-sm px-3 py-1.5 h-8 rounded border border-primary bg-primary text-primary-foreground hover:bg-[#2a2a2a] hover:text-foreground hover:border-border active:bg-[#333] transition-colors cursor-pointer"
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Header */}
       <header className="border-b border-border px-6 py-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold tracking-tight">DecapStream</h1>
+        <h1 className="text-lg font-semibold tracking-tight">Decap Stream</h1>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => { fetchStreams() }}
-            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded border border-border hover:bg-accent transition-colors"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
+          {/* #6 — refresh com h-8 explícito igual aos outros */}
+          <button onClick={() => fetchStreams(true)} className={btnBase} title="Atualizar">
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
           </button>
-          <button
-            onClick={downloadPlaylist}
-            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded border border-border hover:bg-accent transition-colors"
-          >
+          <button onClick={downloadPlaylist} className={btnBase}>
             <Download className="w-3.5 h-3.5" /> Playlist .m3u
           </button>
-          <button
-            onClick={() => router.push("/streams/new")}
-            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" /> Nova stream
+          {/* #7 — botão de config */}
+          <button onClick={() => setSettingsOpen((v) => !v)} className={btnBase} title="Settings">
+            <Settings className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => window.location.href = "/streams/new"} className={btnPrimary}>
+            <Plus className="w-3.5 h-3.5" /> New stream
           </button>
         </div>
       </header>
 
-      {/* Grid */}
+      {/* #7 — popup de configurações */}
+      {settingsOpen && (
+        <SettingsPopup
+          cardSize={cardSize}
+          onCardSize={(s) => { setCardSize(s); localStorage.setItem("cardSize", s); setSettingsOpen(false) }}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
+
       <main className="flex-1 p-6">
-        {loading ? (
-          <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
-            Carregando...
+        {showSkeleton ? (
+          <div className="flex flex-wrap gap-4">
+            {[...Array(refreshing ? Math.max(streams.length, 1) : 4)].map((_, i) => (
+              <SkeletonCard key={i} size={cardSize} />
+            ))}
           </div>
         ) : streams.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 gap-3 text-muted-foreground">
-            <p className="text-sm">Nenhuma stream configurada.</p>
-            <button
-              onClick={() => router.push("/streams/new")}
-              className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" /> Nova stream
+            <p className="text-sm">No streams configured.</p>
+            <button onClick={() => window.location.href = "/streams/new"} className={btnPrimary}>
+              <Plus className="w-3.5 h-3.5" /> New stream
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="flex flex-wrap gap-4">
             {streams.map((s) => (
               <StreamCard
                 key={s.id}
                 stream={s}
                 status={statuses[s.id]}
-                onRefresh={fetchStreams}
+                localStatus={localStatuses[s.id] ?? null}
+                cardSize={cardSize}
+                onRefresh={() => fetchStreams()}
+                onLocalStatus={setLocalStatus}
               />
             ))}
           </div>
