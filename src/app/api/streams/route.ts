@@ -23,6 +23,8 @@ export async function POST(req: Request) {
 
   const ports = allocatePorts()
   const now = new Date().toISOString()
+  const existing = readStreams()
+  const nextOrder = existing.length > 0 ? Math.max(...existing.map((s) => s.order)) + 1 : 0
 
   const stream = {
     ...STREAM_DEFAULTS,
@@ -30,6 +32,7 @@ export async function POST(req: Request) {
     scale: normalizeScale(body.scale ?? STREAM_DEFAULTS.scale), // #13
     ...ports,
     desiredState: "running" as const, // #19
+    order: nextOrder,
     createdAt: now,
     updatedAt: now,
   }

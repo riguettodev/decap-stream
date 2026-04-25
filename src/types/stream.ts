@@ -24,11 +24,13 @@ export interface Stream {
 
   desiredState: "running" | "stopped"  // #19 — estado desejado persistente
 
+  order: number
+
   createdAt: string
   updatedAt: string
 }
 
-export type StreamCreate = Omit<Stream, "display" | "vncPort" | "debugPort" | "createdAt" | "updatedAt" | "desiredState">
+export type StreamCreate = Omit<Stream, "display" | "vncPort" | "debugPort" | "createdAt" | "updatedAt" | "desiredState" | "order">
 export type StreamUpdate = Partial<StreamCreate>
 
 export const STREAM_DEFAULTS: Omit<StreamCreate, "id" | "name" | "url"> = {

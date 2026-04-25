@@ -12,7 +12,14 @@ function ensureFile() {
 
 export function readStreams(): Stream[] {
   ensureFile()
-  return JSON.parse(fs.readFileSync(STREAMS_FILE, "utf-8")) as Stream[]
+  const streams = JSON.parse(fs.readFileSync(STREAMS_FILE, "utf-8")) as Stream[]
+  // migrate: assign order to streams that don't have it yet
+  let dirty = false
+  streams.forEach((s, i) => {
+    if (s.order === undefined) { s.order = i; dirty = true }
+  })
+  if (dirty) fs.writeFileSync(STREAMS_FILE, JSON.stringify(streams, null, 2), "utf-8")
+  return streams.sort((a, b) => a.order - b.order)
 }
 
 export function writeStreams(streams: Stream[]): void {

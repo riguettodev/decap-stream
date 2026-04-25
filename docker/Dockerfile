@@ -6,6 +6,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY src/ ./src/
+COPY public/ ./public/
 COPY next.config.ts tsconfig.json postcss.config.mjs ./
 RUN npm run build
 
@@ -38,6 +39,12 @@ RUN apt-get update \
     && apt-get autoremove -y \
     && apt-get clean \
     && find /usr/lib/chromium/locales -name '*.pak' ! -name 'en-US.pak' -delete \
+    \
+    # Chromium managed policy: disable password manager and autofill save prompts
+    && mkdir -p /etc/chromium/policies/managed \
+    && printf '{"PasswordManagerEnabled":false,"AutofillAddressEnabled":false,"AutofillCreditCardEnabled":false}' \
+        > /etc/chromium/policies/managed/policy.json \
+    \
     && rm -rf \
         /var/lib/apt/lists/* \
         /tmp/* /var/tmp/* \
@@ -48,6 +55,7 @@ RUN apt-get update \
 
 COPY --from=builder /build/.next/standalone/ /app/
 COPY --from=builder /build/.next/static/ /app/.next/static/
+COPY --from=builder /build/public/ /app/public/
 
 COPY config/supervisord.conf /etc/supervisor/supervisord.conf
 COPY config/mediamtx.yml /etc/mediamtx.yml

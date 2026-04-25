@@ -57,7 +57,7 @@ function Field({ label, tooltip, required, error, children }: {
         {tooltip && <Tooltip text={tooltip} />}
       </div>
       {children}
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      {error && <p className="text-xs font-bold text-red-500">{error}</p>}
     </div>
   )
 }
@@ -200,10 +200,10 @@ export function StreamForm({ initial }: Props) {
           </Field>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Username" tooltip={TOOLTIPS.user}>
-              <Input value={form.user ?? ""} onChange={(e) => set("user", e.target.value)} />
+              <Input autoComplete="off" value={form.user ?? ""} onChange={(e) => set("user", e.target.value)} />
             </Field>
             <Field label="Password" tooltip={TOOLTIPS.pass}>
-              <Input type="password" value={form.pass ?? ""} onChange={(e) => set("pass", e.target.value)} />
+              <Input type="password" autoComplete="new-password" value={form.pass ?? ""} onChange={(e) => set("pass", e.target.value)} />
             </Field>
           </div>
         </section>

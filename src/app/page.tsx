@@ -4,11 +4,39 @@ import { useEffect, useState, useCallback } from "react"
 import { Plus, Download, RefreshCw, Settings, X } from "lucide-react"
 import { StreamCard } from "@/components/StreamCard"
 import type { Stream } from "@/types/stream"
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core"
+import type { DragEndEvent } from "@dnd-kit/core"
+import { SortableContext, useSortable, rectSortingStrategy, arrayMove } from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 
-type CardSize = "sm" | "md" | "lg"
+type CardSize = "mini" | "sm" | "md" | "lg"
+
+const CARD_WIDTHS: Record<CardSize, string> = { mini: "max-w-[200px]", sm: "max-w-[240px]", md: "max-w-[300px]", lg: "max-w-[380px]" }
+
+function SortableStreamCard(props: {
+  stream: Stream
+  status?: Record<string, string>
+  localStatus?: string | null
+  cardSize: CardSize
+  onRefresh: () => void
+  onLocalStatus: (id: string, s: string | null) => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.stream.id })
+  const style = { transform: CSS.Transform.toString(transform), transition }
+  return (
+    <div ref={setNodeRef} style={style} className={`w-full ${CARD_WIDTHS[props.cardSize]}`}>
+      <StreamCard
+        {...props}
+        dragHandleListeners={listeners}
+        dragHandleAttributes={attributes}
+        isDragging={isDragging}
+      />
+    </div>
+  )
+}
 
 function SkeletonCard({ size = "sm" }: { size?: CardSize }) {
-  const widths = { sm: "max-w-[200px]", md: "max-w-[240px]", lg: "max-w-[300px]" }
+  const widths = { mini: "max-w-[200px]", sm: "max-w-[240px]", md: "max-w-[300px]", lg: "max-w-[380px]" }
   return (
     <div className={`rounded-lg border border-border bg-card p-3 flex flex-col gap-2.5 w-full ${widths[size]} animate-pulse`}>
       <div className="flex justify-between items-start">
@@ -46,17 +74,16 @@ function SettingsPopup({ cardSize, onCardSize, onClose }: {
         <div className="flex flex-col gap-2">
           <p className="text-xs text-muted-foreground tracking-wider">Card size</p>
           <div className="flex gap-2">
-            {(["sm", "md", "lg"] as CardSize[]).map((s) => (
+            {(["mini", "sm", "md", "lg"] as CardSize[]).map((s) => (
               <button
                 key={s}
                 onClick={() => onCardSize(s)}
-                className={`flex-1 py-1.5 rounded border text-xs transition-colors cursor-pointer ${
-                  cardSize === s
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border hover:bg-[#2a2a2a]"
-                }`}
+                className="flex-1 py-1.5 rounded border text-xs transition-colors cursor-pointer"
+                style={cardSize === s
+                  ? { background: "#ededed", color: "#0a0a0a", borderColor: "#ededed" }
+                  : {}}
               >
-                {s === "sm" ? "Small" : s === "md" ? "Medium" : "Big"}
+                {s === "mini" ? "Mini" : s === "sm" ? "Small" : s === "md" ? "Medium" : "Big"}
               </button>
             ))}
           </div>
@@ -72,8 +99,24 @@ export default function GalleryPage() {
   const [localStatuses, setLocalStatuses] = useState<Record<string, string | null>>({})
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [cardSize, setCardSize] = useState<CardSize>("md")
+  const [cardSize, setCardSize] = useState<CardSize>("md")  // md = Medium = antigo Big
   const [settingsOpen, setSettingsOpen] = useState(false)
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = streams.findIndex((s) => s.id === active.id)
+    const newIndex = streams.findIndex((s) => s.id === over.id)
+    const reordered = arrayMove(streams, oldIndex, newIndex)
+    setStreams(reordered)
+    await fetch("/api/streams/reorder", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: reordered.map((s) => s.id) }),
+    })
+  }
 
   useEffect(() => {
     const saved = localStorage.getItem("cardSize") as CardSize | null
@@ -127,7 +170,10 @@ export default function GalleryPage() {
   return (
     <div className="min-h-screen flex flex-col">
       <header className="border-b border-border px-6 py-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold tracking-tight">Decap Stream</h1>
+        <div className="flex items-center gap-2">
+          <img src="/web-app-manifest-192x192.png" alt="Decap Stream" className="w-6 h-6 rounded" />
+          <h1 className="text-lg font-semibold tracking-tight">Decap Stream</h1>
+        </div>
         <div className="flex items-center gap-2">
           {/* #6 — refresh com h-8 explícito igual aos outros */}
           <button onClick={() => fetchStreams(true)} className={btnBase} title="Atualizar">
@@ -170,19 +216,23 @@ export default function GalleryPage() {
             </button>
           </div>
         ) : (
-          <div className="flex flex-wrap gap-4">
-            {streams.map((s) => (
-              <StreamCard
-                key={s.id}
-                stream={s}
-                status={statuses[s.id]}
-                localStatus={localStatuses[s.id] ?? null}
-                cardSize={cardSize}
-                onRefresh={() => fetchStreams()}
-                onLocalStatus={setLocalStatus}
-              />
-            ))}
-          </div>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={streams.map((s) => s.id)} strategy={rectSortingStrategy}>
+              <div className="flex flex-wrap gap-4">
+                {streams.map((s) => (
+                  <SortableStreamCard
+                    key={s.id}
+                    stream={s}
+                    status={statuses[s.id]}
+                    localStatus={localStatuses[s.id] ?? null}
+                    cardSize={cardSize}
+                    onRefresh={() => fetchStreams()}
+                    onLocalStatus={setLocalStatus}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
         )}
       </main>
     </div>

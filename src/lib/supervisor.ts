@@ -2,6 +2,7 @@ import fs from "fs"
 import path from "path"
 import { execSync, spawn } from "child_process"
 import type { Stream } from "@/types/stream"
+import { getStream } from "./db"
 
 const DATA_DIR = process.env.DATA_DIR ?? "/app/data"
 const STREAMS_DIR = path.join(DATA_DIR, "streams")
@@ -86,6 +87,7 @@ export function provisionStream(stream: Stream): void {
 export function startStream(id: string): void {
   const programs = ["xvfb", "chromium", "autologin", "x11vnc", "ffmpeg"]
   for (const p of programs) supervisorctl(`start ${p}-${id}`)
+  captureThumb(id, 60)
 }
 
 export function stopStream(id: string): void {
@@ -111,10 +113,13 @@ export function removeStream(id: string): void {
 
 export function captureThumb(streamId: string, delay = 60): void {
   if (IS_DEV) { console.log(`[thumb mock] captureThumb ${streamId} delay=${delay}s`); return }
+  const stream = getStream(streamId)
+  if (!stream) return
   const thumbPath = path.join(STREAMS_DIR, streamId, "thumb.jpg")
-  const tmpPath = `${thumbPath}.tmp`
+  const tmpPath = path.join(STREAMS_DIR, streamId, "thumb.tmp.jpg")
+  // capture directly from Xvfb — doesn't depend on RTMP/HLS being up
   const child = spawn("bash", ["-c",
-    `sleep ${delay} && ffmpeg -y -loglevel error -i http://localhost:8888/live/${streamId}/index.m3u8 -vframes 1 -q:v 2 "${tmpPath}" && mv "${tmpPath}" "${thumbPath}"`
+    `sleep ${delay} && ffmpeg -y -loglevel error -f x11grab -video_size ${stream.resolution} -i ${stream.display} -vframes 1 -q:v 2 "${tmpPath}" && mv "${tmpPath}" "${thumbPath}"`
   ], { detached: true, stdio: "ignore" })
   child.unref()
 }
