@@ -1,6 +1,18 @@
-# DecapStream
+<p align="center">
+  <img src="./public/web-app-manifest-192x192.png" width="96" />
+</p>
+<h1 align="center">Decap Stream</h1>
 
 Turn any web page into an RTMP/HLS stream. Chromium renders the page, ffmpeg captures it, MediaMTX publishes it. Built for NOC environments and digital signage.
+
+## Screenshots
+
+![Dashboard](./screenshots/dashboard.png)
+
+<p align="center">
+  <img src="./screenshots/stream-config.png" alt="Stream Config" width="49%" />
+  <img src="./screenshots/login.png" alt="Login Page" width="49%" />
+</p>
 
 ## How it works
 
@@ -149,8 +161,9 @@ In dev mode (`NODE_ENV !== "production"`), all `supervisorctl` and `captureThumb
 - [MediaMTX](https://github.com/bluenviron/mediamtx)
 - [HLS.js](https://github.com/video-dev/hls.js/)
 - [noVNC](https://novnc.com/)
-- Chromium, ffmpeg
+- [FFmpeg](https://ffmpeg.org)
+- [Chromium](https://www.chromium.org)
 
 ## License
 
-MIT
+[MIT](/LICENSE)
