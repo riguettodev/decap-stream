@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { Plus, Download, RefreshCw, Settings, X } from "lucide-react"
+import { Plus, Download, RefreshCw, Settings, X, LogOut } from "lucide-react"
 import { StreamCard } from "@/components/StreamCard"
 import type { Stream } from "@/types/stream"
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core"
@@ -54,7 +54,7 @@ function SkeletonCard({ size = "sm" }: { size?: CardSize }) {
   )
 }
 
-// #7 — settings popup
+// settings popup
 function SettingsPopup({ cardSize, onCardSize, onClose }: {
   cardSize: CardSize
   onCardSize: (s: CardSize) => void
@@ -101,6 +101,7 @@ export default function GalleryPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [cardSize, setCardSize] = useState<CardSize>("md")  // md = Medium = antigo Big
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [authEnabled, setAuthEnabled] = useState(false)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
@@ -144,7 +145,10 @@ export default function GalleryPage() {
     setStatuses(Object.fromEntries(results))
   }, [])
 
-  useEffect(() => { fetchStreams() }, [fetchStreams])
+  useEffect(() => {
+    fetchStreams()
+    fetch("/api/auth/status").then(r => r.json()).then(d => setAuthEnabled(d.enabled))
+  }, [fetchStreams])
 
   useEffect(() => {
     if (streams.length === 0) return
@@ -163,7 +167,7 @@ export default function GalleryPage() {
 
   const showSkeleton = loading || refreshing
 
-  // #6 — todos os botões do header com mesmo padding e tamanho
+  // all header buttons share the same padding and height
   const btnBase = "flex items-center gap-1.5 text-sm px-3 py-1.5 h-8 rounded border border-border hover:bg-[#2a2a2a] active:bg-[#333] transition-colors cursor-pointer"
   const btnPrimary = "flex items-center gap-1.5 text-sm px-3 py-1.5 h-8 rounded border border-primary bg-primary text-primary-foreground hover:bg-[#2a2a2a] hover:text-foreground hover:border-border active:bg-[#333] transition-colors cursor-pointer"
 
@@ -173,9 +177,11 @@ export default function GalleryPage() {
         <div className="flex items-center gap-2">
           <img src="/web-app-manifest-192x192.png" alt="Decap Stream" className="w-6 h-6 rounded" />
           <h1 className="text-lg font-semibold tracking-tight">Decap Stream</h1>
+          <span className="text-muted-foreground/40 text-sm select-none">·</span>
+          <a href="https://riguetto.dev" target="_blank" rel="noopener noreferrer" className="text-xs text-[#888] hover:text-[#ededed] hover:underline transition-colors">riguetto.dev</a>
         </div>
         <div className="flex items-center gap-2">
-          {/* #6 — refresh com h-8 explícito igual aos outros */}
+          {/* explicit h-8 to match other header buttons */}
           <button onClick={() => fetchStreams(true)} className={btnBase} title="Atualizar">
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
           </button>
@@ -189,10 +195,19 @@ export default function GalleryPage() {
           <button onClick={() => window.location.href = "/streams/new"} className={btnPrimary}>
             <Plus className="w-3.5 h-3.5" /> New stream
           </button>
+          {authEnabled && (
+            <button
+              onClick={async () => { await fetch("/api/auth/logout", { method: "POST" }); window.location.href = "/login" }}
+              className={btnBase}
+              title="Sign out"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </header>
 
-      {/* #7 — popup de configurações */}
+      {/* settings popup */}
       {settingsOpen && (
         <SettingsPopup
           cardSize={cardSize}

@@ -11,15 +11,15 @@ export async function POST(_req: Request, { params }: Ctx) {
 
   switch (action) {
     case "start":
-      saveStream({ ...stream, desiredState: "running", updatedAt: new Date().toISOString() }) // #19
+      saveStream({ ...stream, desiredState: "running", updatedAt: new Date().toISOString() })
       startStream(id)
       break
     case "stop":
-      saveStream({ ...stream, desiredState: "stopped", updatedAt: new Date().toISOString() }) // #19
+      saveStream({ ...stream, desiredState: "stopped", updatedAt: new Date().toISOString() })
       stopStream(id)
       break
     case "restart":
-      saveStream({ ...stream, desiredState: "running", updatedAt: new Date().toISOString() }) // #19
+      saveStream({ ...stream, desiredState: "running", updatedAt: new Date().toISOString() })
       restartStream(id)
       break
     default:

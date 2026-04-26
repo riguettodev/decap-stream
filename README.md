@@ -18,11 +18,13 @@ All processes are managed by Supervisord. The web UI is a Next.js app that contr
 ## Features
 
 - **Stream any URL** — if it loads in a browser, it streams
-- **Dashboard with live thumbnails** — captured from the HLS output, refreshable on demand
-- **VNC access** — inspect any stream's virtual display from the browser via unified noVNC (single port, token routing)
+- **Dashboard with live thumbnails** — captured directly from the Xvfb display, refreshable on demand
+- **Inline VNC** — inspect any stream's virtual display without leaving the UI (`/vnc/{id}`)
 - **Autologin with CDP detection** — configure credentials per stream; on restart, queries Chrome DevTools Protocol to skip login if the session is still alive
 - **Persistent desired state** — streams remember if they were running or stopped and restore automatically on container restart
+- **Optional authentication** — set `AUTH_USER` + `AUTH_PASS` to password-protect the entire UI; rolling 30-day session, no login required while active
 - **Fully configurable encoding** — resolution, scale, FPS, bitrate, preset, tune, GOP, threads, all per stream
+- **GPU acceleration** — optional per-stream Chromium GPU flag (disabled by default for container compatibility)
 - **Built-in HLS player** — watch any stream in the browser; also serves a standalone embeddable HTML page per stream
 
 ## Quick Start
@@ -39,11 +41,13 @@ services:
       - seccomp:unconfined   # required for Chromium syscalls
     environment:
       TZ: America/Sao_Paulo
+      # AUTH_USER: admin          # optional: enables login if both are set
+      # AUTH_PASS: secure_password
     ports:
-      - "3000:3000"   # Web UI
-      - "1935:1935"   # RTMP input
-      - "8888:8888"   # HLS output
-      - "6080:6080"   # noVNC
+      - "3000:3000"              # Web UI — main entry point
+      - "127.0.0.1:6080:6080"   # VNC — localhost only; remote access via tunnel/VPN
+      # - "1935:1935"            # RTMP — expose only for external ingest (e.g. OBS)
+      # - "8888:8888"            # HLS  — internal only; proxied through the UI at /api/hls/
     volumes:
       - decap-stream:/app/data
 
@@ -63,12 +67,12 @@ Open **http://localhost:3000** and add your first stream.
 
 ## Ports
 
-| Port | Service |
-|------|---------|
-| `3000` | Web UI (Next.js) |
-| `1935` | RTMP ingest (MediaMTX) |
-| `8888` | HLS output (MediaMTX) |
-| `6080` | noVNC unified (token-based routing to all streams) |
+| Port | Default | Description |
+|------|---------|-------------|
+| `3000` | exposed | Web UI (Next.js) — sole public entry point |
+| `6080` | localhost only | noVNC (token-based routing to all streams) |
+| `1935` | commented out | RTMP ingest (MediaMTX) — only needed for external ingest |
+| `8888` | commented out | HLS output (MediaMTX) — proxied through Next.js at `/api/hls/` |
 
 ## RTMP & HLS URLs
 
@@ -77,8 +81,8 @@ Each stream gets a slug ID you define (e.g. `grafana-prod`):
 | Protocol | URL |
 |----------|-----|
 | RTMP ingest | `rtmp://<host>:1935/live/<id>` |
-| HLS manifest | `http://<host>:8888/live/<id>/index.m3u8` |
-| VNC | `http://<host>:6080/vnc.html?autoconnect=true&path=websockify%3Ftoken%3D<id>` |
+| HLS manifest | `http://<host>:3000/api/hls/live/<id>/index.m3u8` |
+| VNC (inline) | `http://<host>:3000/vnc/<id>` |
 
 ## Stream Configuration
 
@@ -88,7 +92,7 @@ Each stream gets a slug ID you define (e.g. `grafana-prod`):
 | `name` | | Display name |
 | `url` | | URL to open in Chromium |
 | `user` / `pass` | | Credentials for autologin (optional) |
-| `delay` | `15s` | Seconds before ffmpeg starts (allows page to load) |
+| `delay` | `15s` | Seconds before ffmpeg starts (allows page to load; also offsets first thumbnail) |
 | `resolution` | `1920x1080` | Virtual display and capture size |
 | `scale` | `1280x720` | Output video resolution |
 | `fps` | `30` | Capture framerate |
@@ -98,24 +102,26 @@ Each stream gets a slug ID you define (e.g. `grafana-prod`):
 | `tune` | `stillimage` | x264 tune (`stillimage` for dashboards, `zerolatency` for dynamic content) |
 | `gop` | `60` | Keyframe interval (auto-calculated as 2× FPS in the UI) |
 | `threads` | `0` | ffmpeg encoding threads (`0` = auto-detect) |
+| `gpu` | `false` | Enable Chromium GPU acceleration (requires host GPU + container access) |
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│  Container                                                   │
-│                                                              │
-│  Next.js :3000  ──API──►  Supervisord                        │
-│                              ├── novnc :6080  (global)       │
-│                              └── per stream:                 │
-│                                   ├── xvfb       (display)   │
-│                                   ├── chromium   (browser)   │
-│                                   ├── autologin  (CDP)       │
-│                                   ├── x11vnc     (VNC)       │
-│                                   └── ffmpeg     (encode)    │
-│                                         │                    │
-│  MediaMTX :1935/:8888  ◄────RTMP────────┘                    │
-└──────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  Container                                                  │
+│                                                             │
+│  Next.js :3000  ──API──►  Supervisord                       │
+│    ├── /api/hls/ ──────►  MediaMTX :8888 (internal)         │
+│    └── /vnc/{id} ──────►  noVNC :6080 (localhost)           │
+│                              └── per stream:                │
+│                                   ├── xvfb       (display)  │
+│                                   ├── chromium   (browser)  │
+│                                   ├── autologin  (CDP)      │
+│                                   ├── x11vnc     (VNC)      │
+│                                   └── ffmpeg     (encode)   │
+│                                         │                   │
+│  MediaMTX :1935/:8888  ◄────RTMP────────┘                   │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 - `streams.json` flat file + one directory per stream under `/app/data/streams/{id}/`

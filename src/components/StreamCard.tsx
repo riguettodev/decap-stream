@@ -125,8 +125,7 @@ export function StreamCard({ stream, status, localStatus, cardSize = "md", onRef
   }
 
   function openVNC() {
-    const token = encodeURIComponent(`token=${stream.id}`)
-    window.open(`http://${window.location.hostname}:6080/vnc.html?autoconnect=true&path=websockify%3F${token}`, "_blank")
+    window.location.href = `/vnc/${stream.id}`
   }
 
   function copyRTMP() {

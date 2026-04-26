@@ -13,7 +13,7 @@ function ensureFile() {
 export function readStreams(): Stream[] {
   ensureFile()
   const streams = JSON.parse(fs.readFileSync(STREAMS_FILE, "utf-8")) as Stream[]
-  // migrate: assign order to streams that don't have it yet
+  // migration: assign order to streams that don't have it yet
   let dirty = false
   streams.forEach((s, i) => {
     if (s.order === undefined) { s.order = i; dirty = true }
@@ -43,7 +43,7 @@ export function deleteStream(id: string): void {
   writeStreams(readStreams().filter((s) => s.id !== id))
 }
 
-// Aloca display, portas VNC, noVNC e debug sem conflito com streams existentes
+// Allocates display number and VNC/debug ports without conflicting with existing streams
 export function allocatePorts(): {
   display: string
   vncPort: number

@@ -7,9 +7,9 @@ export interface Stream {
   user?: string
   pass?: string
 
-  delay: number        // segundos antes do ffmpeg iniciar (delay de boot da stream)
-  resolution: string   // tamanho do Xvfb/Chrome: "1920x1080"
-  scale: string        // scale do ffmpeg output: "1280x720" (convertido para "1280:720" internamente)
+  delay: number        // seconds before ffmpeg starts (stream boot delay)
+  resolution: string   // Xvfb/Chrome window size: "1920x1080"
+  scale: string        // ffmpeg output scale: "1280x720" (stored as "1280:720" internally)
   fps: number
   bitrate: string
   bufsize: string
@@ -22,7 +22,9 @@ export interface Stream {
   vncPort: number
   debugPort: number
 
-  desiredState: "running" | "stopped"  // #19 — estado desejado persistente
+  gpu: boolean
+
+  desiredState: "running" | "stopped"  // persisted desired state, restored on container restart
 
   order: number
 
@@ -44,4 +46,5 @@ export const STREAM_DEFAULTS: Omit<StreamCreate, "id" | "name" | "url"> = {
   tune: "stillimage",
   gop: 60,
   threads: 0,
+  gpu: false,
 }

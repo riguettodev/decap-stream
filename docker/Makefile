@@ -1,5 +1,5 @@
 SHELL := /bin/bash
-IMAGE ?= git.kralot.cloud/kralot/decap-stream
+IMAGE ?= registry.kralot.cloud/kralot/decap-stream
 TAG   ?= ""
 
 .PHONY: build push

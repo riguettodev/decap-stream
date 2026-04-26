@@ -29,9 +29,9 @@ export async function POST(req: Request) {
   const stream = {
     ...STREAM_DEFAULTS,
     ...body,
-    scale: normalizeScale(body.scale ?? STREAM_DEFAULTS.scale), // #13
+    scale: normalizeScale(body.scale ?? STREAM_DEFAULTS.scale),
     ...ports,
-    desiredState: "running" as const, // #19
+    desiredState: "running" as const,
     order: nextOrder,
     createdAt: now,
     updatedAt: now,
@@ -40,7 +40,7 @@ export async function POST(req: Request) {
   saveStream(stream)
   provisionStream(stream)
   startStream(stream.id)
-  captureThumb(stream.id, 60)
+  captureThumb(stream.id, stream.delay + 60)
 
   return NextResponse.json(stream, { status: 201 })
 }

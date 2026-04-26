@@ -2,9 +2,8 @@ import { type NextRequest, NextResponse } from "next/server"
 
 type Ctx = { params: Promise<{ id: string }> }
 
-export async function GET(req: NextRequest, { params }: Ctx) {
+export async function GET(_req: NextRequest, { params }: Ctx) {
   const { id } = await params
-  const host = req.headers.get("host")?.split(":")[0] ?? "localhost"
 
   const html = `<!DOCTYPE html>
 <html>
@@ -27,7 +26,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   <div id="msg"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.4.12/hls.min.js"></script>
   <script>
-    var src='http://${host}:8888/live/${id}/index.m3u8';
+    var src='/api/hls/live/${id}/index.m3u8';
     var hls;
     function showMsg(t){
       var m=document.getElementById('msg');

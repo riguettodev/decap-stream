@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-DEFAULT_IMAGE="git.kralot.cloud/kralot/decap-stream"
+DEFAULT_IMAGE="registry.kralot.cloud/kralot/decap-stream"
 DEFAULT_VERSION="0.0.0"
 DEFAULT_LATEST="latest"
 

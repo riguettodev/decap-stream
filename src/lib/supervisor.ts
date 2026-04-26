@@ -25,16 +25,16 @@ function supervisorctl(cmd: string) {
   try {
     execSync(`supervisorctl -c /etc/supervisor/supervisord.conf ${cmd}`, { stdio: "pipe" })
   } catch {
-    // supervisorctl retorna exit 1 em alguns casos não-fatais
+    // supervisorctl returns exit 1 in some non-fatal cases
   }
 }
 
-// #6 — converte "1920x1080" → "1920,1080" para o Chrome
+// converts "1920x1080" → "1920,1080" for Chrome --window-size flag
 function resolutionToChrome(res: string): string {
   return res.replace("x", ",")
 }
 
-// #13 — normaliza scale: aceita "1280x720" ou "1280:720", sempre salva "1280:720"
+// normalizes scale: accepts "1280x720" or "1280:720", always saves as "1280:720"
 export function normalizeScale(scale: string): string {
   return scale.replace("x", ":")
 }
@@ -63,6 +63,7 @@ export function provisionStream(stream: Stream): void {
     THREADS:      stream.threads ?? 0,
     USER:         stream.user ?? "",
     PASS:         stream.pass ?? "",
+    GPU_FLAGS:    stream.gpu ? "" : "    --disable-gpu \\\n",
   }
 
   const confTpl = fs.readFileSync("/opt/scripts/stream.template.conf", "utf-8")

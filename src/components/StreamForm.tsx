@@ -28,6 +28,7 @@ const TOOLTIPS = {
   delay:      "Seconds to wait after Chromium starts before ffmpeg begins capturing. Gives the page time to fully load and render.",
   gop:        "Keyframe interval in frames. Recommended: 2× FPS. Affects HLS segment alignment and seek accuracy. Auto-calculated from FPS unless manually changed.",
   threads:    "Number of ffmpeg encoding threads. 0 = auto-detect (recommended). Increasing this can reduce latency on multi-core systems at the cost of slightly reduced compression efficiency.",
+  gpu:        "Enable GPU acceleration in Chromium. Disabled by default because most container environments lack GPU access. Enable only if the host has a compatible GPU and the container has access to it.",
 }
 
 function Tooltip({ text }: { text: string }) {
@@ -101,6 +102,7 @@ export function StreamForm({ initial }: Props) {
       tune:       initial.tune,
       gop:        initial.gop,
       threads:    initial.threads ?? 0,
+      gpu:        initial.gpu ?? false,
     } : {}),
   })
 
@@ -109,7 +111,7 @@ export function StreamForm({ initial }: Props) {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
 
-  function set(key: keyof StreamCreate, value: string | number) {
+  function set(key: keyof StreamCreate, value: string | number | boolean) {
     setForm((f) => ({ ...f, [key]: value }))
     setErrors((e) => { const n = { ...e }; delete n[key as string]; return n })
   }
@@ -275,6 +277,27 @@ export function StreamForm({ initial }: Props) {
                   <Field label="Threads" tooltip={TOOLTIPS.threads}>
                     <Input type="number" min={0} value={form.threads ?? 0} onChange={(e) => set("threads", Number(e.target.value))} />
                   </Field>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={form.gpu ?? false}
+                    onClick={() => set("gpu", !form.gpu)}
+                    className={cn(
+                      "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none",
+                      form.gpu ? "bg-primary" : "bg-zinc-600"
+                    )}
+                  >
+                    <span className={cn(
+                      "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-lg transform transition-transform",
+                      form.gpu ? "translate-x-4" : "translate-x-0"
+                    )} />
+                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm">GPU acceleration (Chromium)</span>
+                    <Tooltip text={TOOLTIPS.gpu} />
+                  </div>
                 </div>
               </div>
             )}

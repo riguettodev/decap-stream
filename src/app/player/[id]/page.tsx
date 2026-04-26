@@ -41,7 +41,7 @@ function BackButton({ onClick }: { onClick: () => void }) {
   )
 }
 
-// HLS e M3U8 usam a mesma lógica — HLS.js carregado inline via fetch, não via <Script>
+// HLS.js loaded inline via script tag injection to avoid SSR issues with next/script
 function VideoPlayer({ src, controls }: { src: string; controls?: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<any>(null)
@@ -78,7 +78,7 @@ function VideoPlayer({ src, controls }: { src: string; controls?: boolean }) {
     const v = videoRef.current
     if (!v) return
 
-    // Carrega HLS.js dinamicamente via import para evitar problemas com <Script>
+    // dynamically inject HLS.js to avoid issues with next/script in client components
     const script = document.createElement("script")
     script.src = "https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.4.12/hls.min.js"
     script.onload = () => {
@@ -123,9 +123,7 @@ function PlayerInner() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const mode = (searchParams.get("mode") ?? "hls") as Mode
-  const host = typeof window !== "undefined" ? window.location.hostname : "localhost"
-
-  const streamSrc = `http://${host}:8888/live/${id}/index.m3u8`
+  const streamSrc = `/api/hls/live/${id}/index.m3u8`
 
   return (
     <div className="relative bg-black w-screen h-screen overflow-hidden">

@@ -18,7 +18,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   if (!stream) return NextResponse.json({ error: "not found" }, { status: 404 })
 
   const body = (await req.json()) as StreamUpdate
-  // id e portas não podem ser alterados via PATCH
+  // id and ports are immutable — strip them from PATCH body
   const { id: _id, ...safe } = body as StreamUpdate & { id?: string }
   void _id
 
