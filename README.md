@@ -101,7 +101,7 @@ Each stream gets a slug ID you define (e.g. `grafana-prod`):
 | `bufsize` | `3000k` | Encoder buffer size |
 | `preset` | `ultrafast` | x264 preset |
 | `tune` | `stillimage` | x264 tune (`stillimage` for dashboards, `zerolatency` for dynamic content) |
-| `gop` | `60` | Keyframe interval (auto-calculated as 2× FPS in the UI) |
+| `gop` | `60` | Keyframe interval (auto-calculated as 2x FPS in the UI) |
 | `threads` | `0` | ffmpeg encoding threads (`0` = auto-detect) |
 | `gpu` | `false` | Enable Chromium GPU acceleration (requires host GPU + container access) |
 
