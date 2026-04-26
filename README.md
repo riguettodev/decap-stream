@@ -40,19 +40,20 @@ services:
     security_opt:
       - seccomp:unconfined   # required for Chromium syscalls
     environment:
-      TZ: America/Sao_Paulo
+      # TZ: America/Sao_Paulo
       # AUTH_USER: admin          # optional: enables login if both are set
       # AUTH_PASS: secure_password
     ports:
-      - "3000:3000"              # Web UI — main entry point
+      - "3000:3000"             # Web UI — main entry point
       - "127.0.0.1:6080:6080"   # VNC — localhost only; remote access via tunnel/VPN
-      # - "1935:1935"            # RTMP — expose only for external ingest (e.g. OBS)
-      # - "8888:8888"            # HLS  — internal only; proxied through the UI at /api/hls/
+      # - "1935:1935"           # RTMP — expose only for external ingest (e.g. OBS)
+      # - "8888:8888"           # HLS  — internal only; proxied through the UI at /api/hls/
     volumes:
-      - decap-stream:/app/data
+      - streams:/app/data/streams # Persistent: streams.json, chrome profiles, thumbs
+      # - logs:/app/data/logs       # Optional
 
 volumes:
-  decap-stream:
+  streams:
 ```
 
 ```bash
