@@ -174,7 +174,7 @@ export function StreamCard({ stream, status, localStatus, cardSize = "md", onRef
 
   function handleRunHtml() {
     navigate(prefs.pureMode
-      ? `/player/${stream.id}.html`
+      ? `/player.html?id=${stream.id}`
       : `/static/${stream.id}`)
   }
 
@@ -298,12 +298,12 @@ const playBtn = `w-full flex items-center rounded border border-border bg-muted 
                   </button>
                   <div className="border-t border-border" />
                   <button onClick={() => togglePref("pureMode")} className={menuItem}>
-                    <span className="flex-1">Pure mode</span>
                     <Toggle on={prefs.pureMode} />
+                    <span>Pure mode</span>
                   </button>
                   <button onClick={() => togglePref("newTab")} className={menuItem}>
-                    <span className="flex-1">Open in new tab</span>
                     <Toggle on={prefs.newTab} />
+                    <span>Open in new tab</span>
                   </button>
                   <div className="border-t border-border" />
                   <button onClick={remove} className={cn(menuItem, "text-destructive")}>

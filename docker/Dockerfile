@@ -46,9 +46,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && apt-get clean \
     && find /usr/lib/chromium/locales -name '*.pak' ! -name 'en-US.pak' -delete 2>/dev/null || true \
     \
-    # Chromium managed policy: disable password manager and autofill save prompts
+    # Chromium managed policy: disable password manager, autofill and translate
     && mkdir -p /etc/chromium/policies/managed \
-    && printf '{"PasswordManagerEnabled":false,"AutofillAddressEnabled":false,"AutofillCreditCardEnabled":false}' \
+    && printf '{"PasswordManagerEnabled":false,"AutofillAddressEnabled":false,"AutofillCreditCardEnabled":false,"TranslateEnabled":false}' \
         > /etc/chromium/policies/managed/policy.json \
     \
     && rm -rf \
