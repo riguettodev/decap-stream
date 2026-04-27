@@ -31,13 +31,16 @@ All processes are managed by Supervisord. The web UI is a Next.js app that contr
 
 - **Stream any URL** — if it loads in a browser, it streams
 - **Dashboard with live thumbnails** — captured directly from the Xvfb display, refreshable on demand
+- **Scalable card sizes** — mini/sm/md/lg sizes scale all card elements proportionally (buttons, text, icons, padding)
 - **Inline VNC** — inspect any stream's virtual display without leaving the UI (`/vnc/{id}`)
 - **Autologin with CDP detection** — configure credentials per stream; on restart, queries Chrome DevTools Protocol to skip login if the session is still alive
 - **Persistent desired state** — streams remember if they were running or stopped and restore automatically on container restart
 - **Optional authentication** — set `AUTH_USER` + `AUTH_PASS` to password-protect the entire UI; rolling 30-day session, no login required while active
 - **Fully configurable encoding** — resolution, scale, FPS, bitrate, preset, tune, GOP, threads, all per stream
 - **GPU acceleration** — optional per-stream Chromium GPU flag (disabled by default for container compatibility)
-- **Built-in HLS player** — watch any stream in the browser; also serves a standalone embeddable HTML page per stream
+- **Built-in HLS player** — watch any stream in the browser via a standalone HTML page optimized for TVs (Back + Mute buttons, reconnect on stall, direct MediaMTX connection when available)
+- **Per-card Pure mode** — toggle in the card menu to open Play Stream as a raw `.m3u8` link or Run HTML as a minimal `.html` page with no UI; works with native players and TV browsers
+- **Per-card new tab** — toggle to open any button in a new tab instead of navigating in place; both settings are per-card and saved in the browser
 
 ## Platform Support
 
@@ -103,8 +106,12 @@ Each stream gets a slug ID you define (e.g. `grafana-prod`):
 | Protocol | URL |
 |----------|-----|
 | RTMP ingest | `rtmp://<host>:1935/live/<id>` |
-| HLS manifest | `http://<host>:3000/api/hls/live/<id>/index.m3u8` |
+| HLS manifest (proxied) | `http://<host>:3000/api/hls/live/<id>/index.m3u8` |
+| HLS manifest (direct) | `http://<host>:8888/live/<id>/index.m3u8` — requires port 8888 exposed |
+| HTML player | `http://<host>:3000/player/<id>.html` — minimal page, no UI chrome |
 | VNC (inline) | `http://<host>:3000/vnc/<id>` |
+
+> **Pure mode** (toggle per card): Play Stream opens the proxied HLS `.m3u8` directly; Run HTML opens the `.html` player. Both can be pasted into VLC or any HLS-capable player, or loaded natively on TV browsers that support HLS.
 
 ## Stream Configuration
 

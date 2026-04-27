@@ -19,7 +19,8 @@ interface Props {
   isDragging?: boolean
 }
 
-function StatusBadge({ status, localStatus }: { status?: Record<string, string>; localStatus?: string | null }) {
+function StatusBadge({ status, localStatus, cardSize = "md" }: { status?: Record<string, string>; localStatus?: string | null; cardSize?: "mini" | "sm" | "md" | "lg" }) {
+  const sc = SCALE[cardSize]
   const label = localStatus ?? (
     status?.ffmpeg === "RUNNING"  ? "running"  :
     status?.ffmpeg === "STARTING" ? "starting" :
@@ -33,8 +34,8 @@ function StatusBadge({ status, localStatus }: { status?: Record<string, string>;
     label === "stopping"   ? "bg-orange-500" :
     label === "error"      ? "bg-red-500"    : "bg-zinc-500"
   return (
-    <span className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap">
-      <Circle className={cn("w-2 h-2 fill-current shrink-0", color)} />
+    <span className={cn("flex items-center gap-1.5 text-muted-foreground whitespace-nowrap", sc.meta)}>
+      <Circle className={cn("fill-current shrink-0", color, sc.dot)} />
       {label}
     </span>
   )
@@ -57,6 +58,21 @@ function copyToClipboard(text: string) {
 }
 
 const CARD_WIDTHS = { mini: "max-w-[200px]", sm: "max-w-[240px]", md: "max-w-[300px]", lg: "max-w-[380px]" }
+
+const SCALE = {
+  mini: { card: "p-2 gap-2",     name: "text-xs",  meta: "text-[10px]", btn: "text-[10px] px-2 py-1 gap-1.5",   btnIcon: "w-2.5 h-2.5", menuIcon: "w-3.5 h-3.5", dot: "w-1.5 h-1.5" },
+  sm:   { card: "p-2.5 gap-2",   name: "text-xs",  meta: "text-[10px]", btn: "text-xs px-2.5 py-1.5 gap-1.5",  btnIcon: "w-2.5 h-2.5", menuIcon: "w-3.5 h-3.5", dot: "w-1.5 h-1.5" },
+  md:   { card: "p-3 gap-2.5",   name: "text-sm",  meta: "text-xs",     btn: "text-xs px-3 py-2 gap-2",         btnIcon: "w-3 h-3",     menuIcon: "w-4 h-4",     dot: "w-2 h-2"     },
+  lg:   { card: "p-4 gap-3",     name: "text-base", meta: "text-sm",    btn: "text-sm px-4 py-2.5 gap-2",       btnIcon: "w-4 h-4",     menuIcon: "w-4 h-4",     dot: "w-2 h-2"     },
+} satisfies Record<string, { card: string; name: string; meta: string; btn: string; btnIcon: string; menuIcon: string; dot: string }>
+
+function Toggle({ on }: { on: boolean }) {
+  return (
+    <span className={cn("w-8 h-4 rounded-full flex items-center px-0.5 transition-colors shrink-0", on ? "bg-blue-500" : "bg-zinc-600")}>
+      <span className={cn("w-3 h-3 rounded-full bg-white transition-transform", on ? "translate-x-4" : "translate-x-0")} />
+    </span>
+  )
+}
 
 function ConfirmDeleteModal({ name, onConfirm, onCancel }: { name: string; onConfirm: () => void; onCancel: () => void }) {
   return (
@@ -89,12 +105,14 @@ function ConfirmDeleteModal({ name, onConfirm, onCancel }: { name: string; onCon
 }
 
 export function StreamCard({ stream, status, localStatus, cardSize = "md", onRefresh, onLocalStatus, dragHandleListeners, dragHandleAttributes, isDragging }: Props) {
+  const sc = SCALE[cardSize]
   const [menuOpen, setMenuOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const [thumbKey, setThumbKey] = useState(0)
   const [thumbError, setThumbError] = useState(false)
   const [thumbCapturing, setThumbCapturing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [prefs, setPrefs] = useState({ pureMode: false, newTab: false })
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
@@ -104,6 +122,26 @@ export function StreamCard({ stream, status, localStatus, cardSize = "md", onRef
   }, [thumbError, thumbCapturing])
 
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current) }, [])
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`stream-prefs-${stream.id}`)
+      if (saved) setPrefs(JSON.parse(saved))
+    } catch {}
+  }, [stream.id])
+
+  function togglePref(key: "pureMode" | "newTab") {
+    setPrefs(prev => {
+      const next = { ...prev, [key]: !prev[key] }
+      localStorage.setItem(`stream-prefs-${stream.id}`, JSON.stringify(next))
+      return next
+    })
+  }
+
+  function navigate(url: string) {
+    if (prefs.newTab) window.open(url, "_blank")
+    else window.location.href = url
+  }
 
   async function action(act: string, optimisticStatus: string) {
     onLocalStatus(stream.id, optimisticStatus)
@@ -125,7 +163,19 @@ export function StreamCard({ stream, status, localStatus, cardSize = "md", onRef
   }
 
   function openVNC() {
-    window.location.href = `/vnc/${stream.id}`
+    navigate(`/vnc/${stream.id}`)
+  }
+
+  function handlePlayStream() {
+    navigate(prefs.pureMode
+      ? `/api/hls/live/${stream.id}/index.m3u8`
+      : `/player/${stream.id}?mode=hls`)
+  }
+
+  function handleRunHtml() {
+    navigate(prefs.pureMode
+      ? `/player/${stream.id}.html`
+      : `/static/${stream.id}`)
   }
 
   function copyRTMP() {
@@ -156,11 +206,7 @@ export function StreamCard({ stream, status, localStatus, cardSize = "md", onRef
     }, 2000)
   }
 
-  function play(mode: string) {
-    window.location.href = `/player/${stream.id}?mode=${mode}`
-  }
-
-  const playBtn = "w-full flex items-center gap-2 text-xs px-3 py-2 rounded border border-border bg-muted hover:bg-[#2a2a2a] active:bg-[#333] transition-colors cursor-pointer"
+const playBtn = `w-full flex items-center rounded border border-border bg-muted hover:bg-[#2a2a2a] active:bg-[#333] transition-colors cursor-pointer ${sc.btn}`
   const menuItem = "w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-[#2a2a2a] active:bg-[#333] transition-colors cursor-pointer"
 
   return (
@@ -172,7 +218,7 @@ export function StreamCard({ stream, status, localStatus, cardSize = "md", onRef
         onCancel={() => setConfirmDelete(false)}
       />
     )}
-    <div className={cn("relative rounded-lg border border-border bg-card p-3 flex flex-col gap-2.5 w-full transition-opacity", CARD_WIDTHS[cardSize], isDragging && "opacity-40")}>
+    <div className={cn("relative rounded-lg border border-border bg-card flex flex-col w-full transition-opacity", sc.card, CARD_WIDTHS[cardSize], isDragging && "opacity-40")}>
 
       {/* Drag handle strip */}
       {(dragHandleListeners || dragHandleAttributes) && (
@@ -209,14 +255,14 @@ export function StreamCard({ stream, status, localStatus, cardSize = "md", onRef
 
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="font-semibold text-sm truncate">{stream.name}</p>
-          <p className="text-xs text-muted-foreground font-mono truncate">{stream.id}</p>
+          <p className={cn("font-semibold truncate", sc.name)}>{stream.name}</p>
+          <p className={cn("text-muted-foreground font-mono truncate", sc.meta)}>{stream.id}</p>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          <StatusBadge status={status} localStatus={localStatus} />
+          <StatusBadge status={status} localStatus={localStatus} cardSize={cardSize} />
           <div className="relative">
             <button onClick={() => setMenuOpen((v) => !v)} className="p-1 rounded hover:bg-[#2a2a2a] transition-colors cursor-pointer">
-              <MoreHorizontal className="w-4 h-4" />
+              <MoreHorizontal className={sc.menuIcon} />
             </button>
             {menuOpen && (
               <>
@@ -251,6 +297,15 @@ export function StreamCard({ stream, status, localStatus, cardSize = "md", onRef
                     {thumbCapturing ? "Capturing..." : "Refresh thumbnail"}
                   </button>
                   <div className="border-t border-border" />
+                  <button onClick={() => togglePref("pureMode")} className={menuItem}>
+                    <span className="flex-1">Pure mode</span>
+                    <Toggle on={prefs.pureMode} />
+                  </button>
+                  <button onClick={() => togglePref("newTab")} className={menuItem}>
+                    <span className="flex-1">Open in new tab</span>
+                    <Toggle on={prefs.newTab} />
+                  </button>
+                  <div className="border-t border-border" />
                   <button onClick={remove} className={cn(menuItem, "text-destructive")}>
                     <Trash2 className="w-3.5 h-3.5" /> Delete
                   </button>
@@ -261,12 +316,12 @@ export function StreamCard({ stream, status, localStatus, cardSize = "md", onRef
         </div>
       </div>
 
-      <p className="text-xs text-muted-foreground truncate" title={stream.url}>{stream.url}</p>
+      <p className={cn("text-muted-foreground truncate", sc.meta)} title={stream.url}>{stream.url}</p>
 
       <div className="flex flex-col gap-1.5">
-        <button onClick={() => play("hls")}  className={playBtn}><Play    className="w-3 h-3 shrink-0" /> Play Stream</button>
-        <button onClick={() => play("html")} className={playBtn}><Globe   className="w-3 h-3 shrink-0" /> Run HTML</button>
-        <button onClick={openVNC}            className={playBtn}><Monitor className="w-3 h-3 shrink-0" /> Open VNC</button>
+        <button onClick={handlePlayStream} className={playBtn}><Play    className={cn("shrink-0", sc.btnIcon)} /> Play Stream</button>
+        <button onClick={handleRunHtml}   className={playBtn}><Globe   className={cn("shrink-0", sc.btnIcon)} /> Run HTML</button>
+        <button onClick={openVNC}         className={playBtn}><Monitor className={cn("shrink-0", sc.btnIcon)} /> Open VNC</button>
       </div>
     </div>
     </>

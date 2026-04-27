@@ -129,7 +129,7 @@ function PlayerInner() {
     <div className="relative bg-black w-screen h-screen overflow-hidden">
       <BackButton onClick={() => router.push("/")} />
       {mode === "hls"  && <VideoPlayer src={streamSrc} controls />}
-      {mode === "html" && <iframe src={`/player-static/${id}`} className="w-screen h-screen border-0" allowFullScreen />}
+      {mode === "html" && <iframe src={`/static/${id}`} className="w-screen h-screen border-0" allowFullScreen />}
     </div>
   )
 }

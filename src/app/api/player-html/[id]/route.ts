@@ -26,14 +26,20 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   <div id="msg"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.4.12/hls.min.js"></script>
   <script>
-    var src='/api/hls/live/${id}/index.m3u8';
+    var streamId='${id}';
+    var proxyUrl='/api/hls/live/'+streamId+'/index.m3u8';
+    var directUrl='http://'+window.location.hostname+':8888/live/'+streamId+'/index.m3u8';
+    var activeSrc=proxyUrl;
     var hls;
+
     function showMsg(t){
       var m=document.getElementById('msg');
       m.textContent=t;m.style.display='block';
       setTimeout(function(){m.style.display='none';},4000);
     }
-    function load(){
+
+    function load(src){
+      activeSrc=src;
       if(hls)hls.destroy();
       hls=new Hls({
         liveSyncDurationCount:2,liveMaxLatencyDurationCount:4,
@@ -44,16 +50,20 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
       hls.attachMedia(document.getElementById('v'));
       hls.on(Hls.Events.MANIFEST_PARSED,function(){document.getElementById('v').play();});
       hls.on(Hls.Events.ERROR,function(e,d){
-        if(d.fatal){showMsg('Error: '+d.type+' — reconnecting...');setTimeout(load,3000);}
+        if(d.fatal){showMsg('Erro: '+d.type+' — reconectando...');setTimeout(function(){load(activeSrc);},3000);}
       });
     }
+
     var last=0;
     setInterval(function(){
       var v=document.getElementById('v');
-      if(v.currentTime===last&&!v.paused){showMsg('Stream stalled — reloading...');load();}
+      if(v.currentTime===last&&!v.paused){showMsg('Stream travada — recarregando...');load(activeSrc);}
       last=v.currentTime;
     },10000);
-    load();
+
+    fetch(directUrl,{method:'HEAD',signal:AbortSignal.timeout(2000)})
+      .then(function(){load(directUrl);})
+      .catch(function(){load(proxyUrl);});
   </script>
 </body>
 </html>`
