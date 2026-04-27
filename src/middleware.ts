@@ -22,7 +22,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Rolling session — refresh cookie on every request, resetting the 30-day timer
+  // Rolling session — refresh cookie only on page navigations, not API/HLS/asset requests
+  if (pathname.startsWith("/api/") || pathname.startsWith("/player")) {
+    return NextResponse.next()
+  }
   const res = NextResponse.next()
   res.cookies.set(COOKIE_NAME, cookie, {
     httpOnly: true,

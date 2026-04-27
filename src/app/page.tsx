@@ -135,14 +135,9 @@ export default function GalleryPage() {
 
   const fetchStatuses = useCallback(async (list: Stream[]) => {
     if (list.length === 0) return
-    const results = await Promise.all(
-      list.map(async (s) => {
-        const res = await fetch(`/api/streams/${s.id}/status`)
-        const data = await res.json()
-        return [s.id, data] as const
-      })
-    )
-    setStatuses(Object.fromEntries(results))
+    const res = await fetch("/api/streams/statuses")
+    const data: Record<string, Record<string, string>> = await res.json()
+    setStatuses(data)
   }, [])
 
   useEffect(() => {

@@ -132,25 +132,51 @@ export function captureThumb(streamId: string, delay = 60): void {
 
 export type ProgramStatus = "RUNNING" | "STOPPED" | "FATAL" | "STARTING" | "UNKNOWN"
 
+// Cache for supervisorctl status — refreshed at most once every 3 seconds across all callers
+let _statusCache: Record<string, Record<string, ProgramStatus>> | null = null
+let _statusCacheAt = 0
+const STATUS_CACHE_TTL = 3000
+
+function fetchAllStatuses(): Record<string, Record<string, ProgramStatus>> {
+  const now = Date.now()
+  if (_statusCache && now - _statusCacheAt < STATUS_CACHE_TTL) return _statusCache
+
+  const result: Record<string, Record<string, ProgramStatus>> = {}
+  try {
+    // One call for all programs — avoid N×5 blocking execSync calls per poll cycle
+    const out = execSync(
+      `supervisorctl -c /etc/supervisor/supervisord.conf status`,
+      { stdio: "pipe" }
+    ).toString()
+    for (const line of out.split("\n")) {
+      // e.g. "ffmpeg-abc123          RUNNING   pid 42, uptime 0:01:00"
+      const m = line.match(/^(\S+)-(\S+)\s+(RUNNING|STOPPED|FATAL|STARTING)/)
+      if (!m) continue
+      const [, program, id, status] = m
+      if (!result[id]) result[id] = {}
+      result[id][program] = status as ProgramStatus
+    }
+  } catch {
+    // supervisorctl can exit non-zero; return whatever was parsed
+  }
+
+  _statusCache = result
+  _statusCacheAt = now
+  return result
+}
+
 export function getStreamStatus(id: string): Record<string, ProgramStatus> {
   const programs = ["xvfb", "chromium", "autologin", "x11vnc", "ffmpeg"]
+  if (IS_DEV) return Object.fromEntries(programs.map((p) => [p, "STOPPED" as ProgramStatus]))
+  const all = fetchAllStatuses()
+  return all[id] ?? Object.fromEntries(programs.map((p) => [p, "UNKNOWN" as ProgramStatus]))
+}
 
+export function getAllStreamStatuses(): Record<string, Record<string, ProgramStatus>> {
+  const programs = ["xvfb", "chromium", "autologin", "x11vnc", "ffmpeg"]
   if (IS_DEV) {
-    return Object.fromEntries(programs.map((p) => [p, "STOPPED" as ProgramStatus]))
+    const { readStreams } = require("./db") as typeof import("./db")
+    return Object.fromEntries(readStreams().map((s) => [s.id, Object.fromEntries(programs.map((p) => [p, "STOPPED" as ProgramStatus]))]))
   }
-
-  const result: Record<string, ProgramStatus> = {}
-  for (const p of programs) {
-    try {
-      const out = execSync(
-        `supervisorctl -c /etc/supervisor/supervisord.conf status ${p}-${id}`,
-        { stdio: "pipe" }
-      ).toString()
-      const match = out.match(/\b(RUNNING|STOPPED|FATAL|STARTING)\b/)
-      result[p] = (match?.[1] as ProgramStatus) ?? "UNKNOWN"
-    } catch {
-      result[p] = "UNKNOWN"
-    }
-  }
-  return result
+  return fetchAllStatuses()
 }
