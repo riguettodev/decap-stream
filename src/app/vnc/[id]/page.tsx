@@ -38,14 +38,17 @@ function BackButton({ onClick }: { onClick: () => void }) {
 function VncInner() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const host = typeof window !== "undefined" ? window.location.hostname : "localhost"
-  const token = encodeURIComponent(`token=${id}`)
-  const vncUrl = `http://${host}:6080/vnc.html?autoconnect=true&path=websockify%3F${token}`
+  const [vncUrl, setVncUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    const token = encodeURIComponent(`token=${id}`)
+    setVncUrl(`/api/novnc/vnc.html?autoconnect=true&path=websockify%3F${token}`)
+  }, [id])
 
   return (
     <div className="relative bg-black w-screen h-screen overflow-hidden">
       <BackButton onClick={() => router.push("/")} />
-      <iframe src={vncUrl} className="w-screen h-screen border-0" allowFullScreen />
+      {vncUrl && <iframe src={vncUrl} className="w-screen h-screen border-0" allowFullScreen />}
     </div>
   )
 }

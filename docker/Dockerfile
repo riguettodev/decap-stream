@@ -66,6 +66,7 @@ COPY --from=builder /build/public/ /app/public/
 COPY config/supervisord.conf /etc/supervisor/supervisord.conf
 COPY config/mediamtx.yml /etc/mediamtx.yml
 COPY scripts/ /opt/scripts/
+COPY docker/server.mjs /opt/server.mjs
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /opt/scripts/*.sh /entrypoint.sh
 
