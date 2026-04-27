@@ -39,6 +39,15 @@ All processes are managed by Supervisord. The web UI is a Next.js app that contr
 - **GPU acceleration** — optional per-stream Chromium GPU flag (disabled by default for container compatibility)
 - **Built-in HLS player** — watch any stream in the browser; also serves a standalone embeddable HTML page per stream
 
+## Platform Support
+
+| Architecture | Status |
+| ------------ | ------ |
+| `linux/amd64` | ✅ Supported |
+| `linux/arm64` | 🔜 Planned |
+
+> arm64 support (Raspberry Pi, Apple Silicon servers) is planned for a future release.
+
 ## Quick Start
 
 ```yaml
