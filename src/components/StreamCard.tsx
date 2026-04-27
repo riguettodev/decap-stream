@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { MoreHorizontal, Play, Globe, Monitor, Pencil, RotateCcw, Square, Trash2, Circle, Copy, Check, Video, ImageUp, GripVertical, Wrench } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Toggle } from "@/components/Toggle"
 import type { Stream } from "@/types/stream"
 import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities"
 import type { DraggableAttributes } from "@dnd-kit/core"
@@ -17,6 +18,7 @@ interface Props {
   dragHandleListeners?: SyntheticListenerMap
   dragHandleAttributes?: DraggableAttributes
   isDragging?: boolean
+  globalPrefs: { pureMode: boolean; newTab: boolean }
 }
 
 function StatusBadge({ status, localStatus, cardSize = "md" }: { status?: Record<string, string>; localStatus?: string | null; cardSize?: "mini" | "sm" | "md" | "lg" }) {
@@ -66,14 +68,6 @@ const SCALE = {
   lg:   { card: "p-4 gap-3",     name: "text-base", meta: "text-sm",    btn: "text-sm px-4 py-2.5 gap-2",       btnIcon: "w-4 h-4",     menuIcon: "w-4 h-4",     dot: "w-2 h-2"     },
 } satisfies Record<string, { card: string; name: string; meta: string; btn: string; btnIcon: string; menuIcon: string; dot: string }>
 
-function Toggle({ on }: { on: boolean }) {
-  return (
-    <span className={cn("w-8 h-4 rounded-full flex items-center px-0.5 transition-colors shrink-0", on ? "bg-blue-500" : "bg-zinc-600")}>
-      <span className={cn("w-3 h-3 rounded-full bg-white transition-transform", on ? "translate-x-4" : "translate-x-0")} />
-    </span>
-  )
-}
-
 function ConfirmDeleteModal({ name, onConfirm, onCancel }: { name: string; onConfirm: () => void; onCancel: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -104,7 +98,7 @@ function ConfirmDeleteModal({ name, onConfirm, onCancel }: { name: string; onCon
   )
 }
 
-export function StreamCard({ stream, status, localStatus, cardSize = "md", onRefresh, onLocalStatus, dragHandleListeners, dragHandleAttributes, isDragging }: Props) {
+export function StreamCard({ stream, status, localStatus, cardSize = "md", onRefresh, onLocalStatus, dragHandleListeners, dragHandleAttributes, isDragging, globalPrefs }: Props) {
   const sc = SCALE[cardSize]
   const [menuOpen, setMenuOpen] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -112,7 +106,6 @@ export function StreamCard({ stream, status, localStatus, cardSize = "md", onRef
   const [thumbError, setThumbError] = useState(false)
   const [thumbCapturing, setThumbCapturing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [prefs, setPrefs] = useState({ pureMode: false, newTab: false })
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
@@ -123,23 +116,8 @@ export function StreamCard({ stream, status, localStatus, cardSize = "md", onRef
 
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current) }, [])
 
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(`stream-prefs-${stream.id}`)
-      if (saved) setPrefs(JSON.parse(saved))
-    } catch {}
-  }, [stream.id])
-
-  function togglePref(key: "pureMode" | "newTab") {
-    setPrefs(prev => {
-      const next = { ...prev, [key]: !prev[key] }
-      localStorage.setItem(`stream-prefs-${stream.id}`, JSON.stringify(next))
-      return next
-    })
-  }
-
   function navigate(url: string) {
-    if (prefs.newTab) window.open(url, "_blank")
+    if (globalPrefs.newTab) window.open(url, "_blank")
     else window.location.href = url
   }
 
@@ -167,13 +145,13 @@ export function StreamCard({ stream, status, localStatus, cardSize = "md", onRef
   }
 
   function handlePlayStream() {
-    navigate(prefs.pureMode
+    navigate(globalPrefs.pureMode
       ? `/api/hls/live/${stream.id}/index.m3u8`
       : `/player/${stream.id}?mode=hls`)
   }
 
   function handleRunHtml() {
-    navigate(prefs.pureMode
+    navigate(globalPrefs.pureMode
       ? `/player.html?id=${stream.id}`
       : `/static/${stream.id}`)
   }
@@ -206,7 +184,7 @@ export function StreamCard({ stream, status, localStatus, cardSize = "md", onRef
     }, 2000)
   }
 
-const playBtn = `w-full flex items-center rounded border border-border bg-muted hover:bg-[#2a2a2a] active:bg-[#333] transition-colors cursor-pointer ${sc.btn}`
+  const playBtn = `w-full flex items-center rounded border border-border bg-muted hover:bg-[#2a2a2a] active:bg-[#333] transition-colors cursor-pointer ${sc.btn}`
   const menuItem = "w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-[#2a2a2a] active:bg-[#333] transition-colors cursor-pointer"
 
   return (
@@ -295,15 +273,6 @@ const playBtn = `w-full flex items-center rounded border border-border bg-muted 
                   <button onClick={refreshThumb} disabled={thumbCapturing} className={cn(menuItem, thumbCapturing && "opacity-50")}>
                     <ImageUp className="w-3.5 h-3.5" />
                     {thumbCapturing ? "Capturing..." : "Refresh thumbnail"}
-                  </button>
-                  <div className="border-t border-border" />
-                  <button onClick={() => togglePref("pureMode")} className={menuItem}>
-                    <Toggle on={prefs.pureMode} />
-                    <span>Pure mode</span>
-                  </button>
-                  <button onClick={() => togglePref("newTab")} className={menuItem}>
-                    <Toggle on={prefs.newTab} />
-                    <span>Open in new tab</span>
                   </button>
                   <div className="border-t border-border" />
                   <button onClick={remove} className={cn(menuItem, "text-destructive")}>

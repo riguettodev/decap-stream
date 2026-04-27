@@ -59,6 +59,14 @@
       .then(function(){load(directUrl);})
       .catch(function(){load(proxyUrl);});
 
+    // Auto-reload — reads global-prefs written by the main UI
+    try {
+      var gp=JSON.parse(localStorage.getItem('global-prefs')||'{}');
+      if(gp.autoReload){
+        setTimeout(function(){location.reload();},Math.max(1,gp.reloadInterval||2)*60*1000);
+      }
+    }catch(e){}
+
     // WebOS screensaver suppression — fails silently if not available
     if(typeof WebOSServiceBridge!=='undefined'){
       var bridge=new WebOSServiceBridge();

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { Plus, Download, RefreshCw, Settings, X, LogOut } from "lucide-react"
 import { StreamCard } from "@/components/StreamCard"
+import { Toggle } from "@/components/Toggle"
 import type { Stream } from "@/types/stream"
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core"
 import type { DragEndEvent } from "@dnd-kit/core"
@@ -10,6 +11,9 @@ import { SortableContext, useSortable, rectSortingStrategy, arrayMove } from "@d
 import { CSS } from "@dnd-kit/utilities"
 
 type CardSize = "mini" | "sm" | "md" | "lg"
+type GlobalPrefs = { pureMode: boolean; newTab: boolean; autoReload: boolean; reloadInterval: number }
+
+const DEFAULT_GLOBAL_PREFS: GlobalPrefs = { pureMode: false, newTab: false, autoReload: false, reloadInterval: 2 }
 
 const CARD_WIDTHS: Record<CardSize, string> = { mini: "max-w-[200px]", sm: "max-w-[240px]", md: "max-w-[300px]", lg: "max-w-[380px]" }
 
@@ -20,6 +24,7 @@ function SortableStreamCard(props: {
   cardSize: CardSize
   onRefresh: () => void
   onLocalStatus: (id: string, s: string | null) => void
+  globalPrefs: GlobalPrefs
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.stream.id })
   const style = { transform: CSS.Transform.toString(transform), transition }
@@ -54,12 +59,18 @@ function SkeletonCard({ size = "sm" }: { size?: CardSize }) {
   )
 }
 
-// settings popup
-function SettingsPopup({ cardSize, onCardSize, onClose }: {
+function SettingsPopup({ cardSize, onCardSize, globalPrefs, onGlobalPrefs, authEnabled, onDownloadPlaylist, onLogout, onClose }: {
   cardSize: CardSize
   onCardSize: (s: CardSize) => void
+  globalPrefs: GlobalPrefs
+  onGlobalPrefs: (patch: Partial<GlobalPrefs>) => void
+  authEnabled: boolean
+  onDownloadPlaylist: () => void
+  onLogout: () => void
   onClose: () => void
 }) {
+  const toggleRow = "flex items-center gap-2 w-full px-1 py-1.5 rounded hover:bg-[#2a2a2a] transition-colors cursor-pointer text-sm"
+
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/50" onClick={onClose} />
@@ -72,7 +83,7 @@ function SettingsPopup({ cardSize, onCardSize, onClose }: {
         </div>
 
         <div className="flex flex-col gap-2">
-          <p className="text-xs text-muted-foreground tracking-wider">Card size</p>
+          <p className="text-xs text-muted-foreground tracking-wider uppercase">Card size</p>
           <div className="flex gap-2">
             {(["mini", "sm", "md", "lg"] as CardSize[]).map((s) => (
               <button
@@ -88,6 +99,50 @@ function SettingsPopup({ cardSize, onCardSize, onClose }: {
             ))}
           </div>
         </div>
+
+        <div className="flex flex-col gap-1">
+          <p className="text-xs text-muted-foreground tracking-wider uppercase">Cards</p>
+          <button onClick={() => onGlobalPrefs({ pureMode: !globalPrefs.pureMode })} className={toggleRow}>
+            <Toggle on={globalPrefs.pureMode} />
+            <span>Pure mode</span>
+          </button>
+          <button onClick={() => onGlobalPrefs({ newTab: !globalPrefs.newTab })} className={toggleRow}>
+            <Toggle on={globalPrefs.newTab} />
+            <span>Open in new tab</span>
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <p className="text-xs text-muted-foreground tracking-wider uppercase">Player</p>
+          <button onClick={() => onGlobalPrefs({ autoReload: !globalPrefs.autoReload })} className={toggleRow}>
+            <Toggle on={globalPrefs.autoReload} />
+            <span>Auto-reload</span>
+          </button>
+          {globalPrefs.autoReload && (
+            <div className="flex items-center gap-2 px-1 py-1">
+              <span className="text-xs text-muted-foreground">Interval</span>
+              <input
+                type="number"
+                min={1}
+                value={globalPrefs.reloadInterval}
+                onChange={(e) => onGlobalPrefs({ reloadInterval: Math.max(1, Number(e.target.value) || 1) })}
+                className="w-14 px-2 py-1 text-xs rounded border border-border bg-muted text-center"
+              />
+              <span className="text-xs text-muted-foreground">min</span>
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-border pt-3 flex flex-col gap-1">
+          <button onClick={onDownloadPlaylist} className="flex items-center gap-2 w-full px-1 py-1.5 rounded hover:bg-[#2a2a2a] transition-colors cursor-pointer text-sm">
+            <Download className="w-3.5 h-3.5" /> Download playlist
+          </button>
+          {authEnabled && (
+            <button onClick={onLogout} className="flex items-center gap-2 w-full px-1 py-1.5 rounded hover:bg-[#2a2a2a] transition-colors cursor-pointer text-sm text-muted-foreground">
+              <LogOut className="w-3.5 h-3.5" /> Sign out
+            </button>
+          )}
+        </div>
       </div>
     </>
   )
@@ -99,9 +154,10 @@ export default function GalleryPage() {
   const [localStatuses, setLocalStatuses] = useState<Record<string, string | null>>({})
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [cardSize, setCardSize] = useState<CardSize>("md")  // md = Medium = antigo Big
+  const [cardSize, setCardSize] = useState<CardSize>("md")
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [authEnabled, setAuthEnabled] = useState(false)
+  const [globalPrefs, setGlobalPrefs] = useState<GlobalPrefs>(DEFAULT_GLOBAL_PREFS)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
@@ -120,9 +176,21 @@ export default function GalleryPage() {
   }
 
   useEffect(() => {
-    const saved = localStorage.getItem("cardSize") as CardSize | null
-    if (saved) setCardSize(saved)
+    try {
+      const savedSize = localStorage.getItem("cardSize") as CardSize | null
+      if (savedSize) setCardSize(savedSize)
+      const savedPrefs = localStorage.getItem("global-prefs")
+      if (savedPrefs) setGlobalPrefs({ ...DEFAULT_GLOBAL_PREFS, ...JSON.parse(savedPrefs) })
+    } catch {}
   }, [])
+
+  function updateGlobalPrefs(patch: Partial<GlobalPrefs>) {
+    setGlobalPrefs(prev => {
+      const next = { ...prev, ...patch }
+      localStorage.setItem("global-prefs", JSON.stringify(next))
+      return next
+    })
+  }
 
   const fetchStreams = useCallback(async (manual = false) => {
     if (manual) setRefreshing(true)
@@ -162,7 +230,6 @@ export default function GalleryPage() {
 
   const showSkeleton = loading || refreshing
 
-  // all header buttons share the same padding and height
   const btnBase = "flex items-center gap-1.5 text-sm px-3 py-1.5 h-8 rounded border border-border hover:bg-[#2a2a2a] active:bg-[#333] transition-colors cursor-pointer"
   const btnPrimary = "flex items-center gap-1.5 text-sm px-3 py-1.5 h-8 rounded border border-primary bg-primary text-primary-foreground hover:bg-[#2a2a2a] hover:text-foreground hover:border-border active:bg-[#333] transition-colors cursor-pointer"
 
@@ -176,37 +243,27 @@ export default function GalleryPage() {
           <a href="https://riguetto.dev" target="_blank" rel="noopener noreferrer" className="text-xs text-[#888] hover:text-[#ededed] hover:underline transition-colors">riguetto.dev</a>
         </div>
         <div className="flex items-center gap-2">
-          {/* explicit h-8 to match other header buttons */}
-          <button onClick={() => fetchStreams(true)} className={btnBase} title="Atualizar">
+          <button onClick={() => fetchStreams(true)} className={btnBase} title="Refresh">
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
           </button>
-          <button onClick={downloadPlaylist} className={btnBase}>
-            <Download className="w-3.5 h-3.5" /> Playlist .m3u
-          </button>
-          {/* #7 — botão de config */}
           <button onClick={() => setSettingsOpen((v) => !v)} className={btnBase} title="Settings">
             <Settings className="w-3.5 h-3.5" />
           </button>
-          <button onClick={() => window.location.href = "/streams/new"} className={btnPrimary}>
-            <Plus className="w-3.5 h-3.5" /> New stream
+          <button onClick={() => window.location.href = "/streams/new"} className={btnPrimary} title="New stream">
+            <Plus className="w-3.5 h-3.5" />
           </button>
-          {authEnabled && (
-            <button
-              onClick={async () => { await fetch("/api/auth/logout", { method: "POST" }); window.location.href = "/login" }}
-              className={btnBase}
-              title="Sign out"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-            </button>
-          )}
         </div>
       </header>
 
-      {/* settings popup */}
       {settingsOpen && (
         <SettingsPopup
           cardSize={cardSize}
-          onCardSize={(s) => { setCardSize(s); localStorage.setItem("cardSize", s); setSettingsOpen(false) }}
+          onCardSize={(s) => { setCardSize(s); localStorage.setItem("cardSize", s) }}
+          globalPrefs={globalPrefs}
+          onGlobalPrefs={updateGlobalPrefs}
+          authEnabled={authEnabled}
+          onDownloadPlaylist={downloadPlaylist}
+          onLogout={async () => { await fetch("/api/auth/logout", { method: "POST" }); window.location.href = "/login" }}
           onClose={() => setSettingsOpen(false)}
         />
       )}
@@ -238,6 +295,7 @@ export default function GalleryPage() {
                     cardSize={cardSize}
                     onRefresh={() => fetchStreams()}
                     onLocalStatus={setLocalStatus}
+                    globalPrefs={globalPrefs}
                   />
                 ))}
               </div>

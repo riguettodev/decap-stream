@@ -116,6 +116,13 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
       if(v.currentTime===last&&!v.paused){showMsg('Stream stalled — reloading...');startHls(activeSrc);}
       last=v.currentTime;
     },10000);
+
+    try{
+      var gp=JSON.parse(localStorage.getItem('global-prefs')||'{}');
+      if(gp.autoReload){
+        setTimeout(function(){location.reload();},Math.max(1,gp.reloadInterval||2)*60*1000);
+      }
+    }catch(e){}
   </script>
 </body>
 </html>`

@@ -108,7 +108,7 @@ Each stream gets a slug ID you define (e.g. `grafana-prod`):
 | RTMP ingest | `rtmp://<host>:1935/live/<id>` |
 | HLS manifest (proxied) | `http://<host>:3000/api/hls/live/<id>/index.m3u8` |
 | HLS manifest (direct) | `http://<host>:8888/live/<id>/index.m3u8` — requires port 8888 exposed |
-| HTML player | `http://<host>:3000/player/<id>.html` — minimal page, no UI chrome |
+| HTML player | `http://<host>:3000/player.html?id=<id>` — static minimal page, no UI chrome |
 | VNC (inline) | `http://<host>:3000/vnc/<id>` |
 
 > **Pure mode** (toggle per card): Play Stream opens the proxied HLS `.m3u8` directly; Run HTML opens the `.html` player. Both can be pasted into VLC or any HLS-capable player, or loaded natively on TV browsers that support HLS.

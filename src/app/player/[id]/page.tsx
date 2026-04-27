@@ -125,6 +125,17 @@ function PlayerInner() {
   const mode = (searchParams.get("mode") ?? "hls") as Mode
   const streamSrc = `/api/hls/live/${id}/index.m3u8`
 
+  useEffect(() => {
+    try {
+      const gp = JSON.parse(localStorage.getItem("global-prefs") ?? "{}")
+      if (gp.autoReload) {
+        const ms = Math.max(1, gp.reloadInterval ?? 2) * 60 * 1000
+        const t = setTimeout(() => location.reload(), ms)
+        return () => clearTimeout(t)
+      }
+    } catch {}
+  }, [])
+
   return (
     <div className="relative bg-black w-screen h-screen overflow-hidden">
       <BackButton onClick={() => router.push("/")} />
