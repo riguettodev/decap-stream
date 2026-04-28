@@ -23,6 +23,70 @@ function render(tpl, vars) {
   return tpl.replace(/\{\{(\w+)\}\}/g, (_, k) => String(vars[k] ?? ''))
 }
 
+const NVENC_PRESET = {
+  ultrafast: 'p1', superfast: 'p1', veryfast: 'p2',
+  faster: 'p3', fast: 'p3', medium: 'p4',
+  slow: 'p5', slower: 'p6', veryslow: 'p7',
+}
+
+function buildEncoderFlags(stream) {
+  const { preset, tune, gop, bitrate, bufsize } = stream
+  const hwaccel = (process.env.FFMPEG_HWACCEL ?? '').toLowerCase().trim()
+  const lines = []
+  const ln = (s) => lines.push(`    ${s} \\`)
+
+  if (hwaccel === 'nvenc') {
+    ln(`-c:v h264_nvenc`)
+    ln(`-preset ${NVENC_PRESET[preset] ?? 'p4'}`)
+    ln(`-tune ${tune === 'zerolatency' ? 'll' : 'hq'}`)
+    ln(`-profile:v high`)
+    ln(`-pix_fmt yuv420p`)
+    ln(`-rc cbr`)
+    ln(`-g ${gop}`)
+    ln(`-keyint_min ${gop}`)
+    ln(`-b:v ${bitrate}`)
+    ln(`-maxrate ${bitrate}`)
+    ln(`-bufsize ${bufsize}`)
+  } else if (hwaccel === 'vaapi') {
+    ln(`-vaapi_device /dev/dri/renderD128`)
+    ln(`-vf 'format=nv12,hwupload'`)
+    ln(`-c:v h264_vaapi`)
+    ln(`-profile:v baseline`)
+    ln(`-level 3.1`)
+    ln(`-g ${gop}`)
+    ln(`-keyint_min ${gop}`)
+    ln(`-b:v ${bitrate}`)
+    ln(`-maxrate ${bitrate}`)
+    ln(`-bufsize ${bufsize}`)
+  } else if (hwaccel === 'qsv') {
+    ln(`-c:v h264_qsv`)
+    ln(`-preset veryfast`)
+    ln(`-profile:v baseline`)
+    ln(`-level 3.1`)
+    ln(`-pix_fmt nv12`)
+    ln(`-g ${gop}`)
+    ln(`-keyint_min ${gop}`)
+    ln(`-b:v ${bitrate}`)
+    ln(`-maxrate ${bitrate}`)
+    ln(`-bufsize ${bufsize}`)
+  } else {
+    ln(`-c:v libx264`)
+    ln(`-preset ${preset}`)
+    ln(`-tune ${tune}`)
+    ln(`-profile:v baseline`)
+    ln(`-level 3.1`)
+    ln(`-pix_fmt yuv420p`)
+    ln(`-g ${gop}`)
+    ln(`-keyint_min ${gop}`)
+    ln(`-sc_threshold 0`)
+    ln(`-b:v ${bitrate}`)
+    ln(`-maxrate ${bitrate}`)
+    ln(`-bufsize ${bufsize}`)
+  }
+
+  return lines.join('\n')
+}
+
 for (const stream of streams) {
   const dir = path.join(STREAMS_DIR, stream.id)
   fs.mkdirSync(path.join(dir, 'chrome-profile'), { recursive: true })
@@ -49,6 +113,7 @@ for (const stream of streams) {
     USER:         stream.user ?? '',
     PASS:         stream.pass ?? '',
     GPU_FLAGS:           stream.gpu ? '' : '    --disable-gpu \\\n',
+    ENCODER_FLAGS:       buildEncoderFlags(stream),
     AUTO_RELOAD:         stream.autoReload ? 'true' : 'false',
     AUTO_RELOAD_INTERVAL: stream.autoReloadInterval ?? 3600,
   }

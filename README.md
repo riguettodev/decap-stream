@@ -39,9 +39,10 @@ All processes are managed by Supervisord. The web UI is a Next.js app that contr
 - **Fully configurable encoding** — resolution, scale, FPS, bitrate, preset, tune, GOP, threads, all per stream
 - **GPU acceleration** — optional per-stream Chromium GPU flag (disabled by default for container compatibility)
 - **Built-in HLS player** — watch any stream in the browser via a standalone HTML page optimized for TVs (Back + Mute buttons, reconnect on stall, direct MediaMTX connection when available)
-- **Per-card Pure mode** — toggle in the card menu to open Play Stream as a raw `.m3u8` link or Run HTML as a minimal `.html` page with no UI; works with native players and TV browsers
-- **Per-card new tab** — toggle to open any button in a new tab instead of navigating in place; both settings are per-card and saved in the browser
-- **Chromium auto-reload** — per-card toggle to reload the browser page on a configurable interval; uses Chrome DevTools Protocol (no xdotool focus tricks); configured from the card menu and persisted on the server
+- **Pure mode** — global toggle in Settings to open Play Stream as a raw `.m3u8` link or Run HTML as a minimal `.html` page with no UI; works with native players and TV browsers
+- **Open in new tab** — global toggle in Settings to open any button in a new tab instead of navigating in place; saved in the browser
+- **Chromium auto-reload** — per-stream toggle to reload the Chromium page on a configurable interval via Chrome DevTools Protocol; configured from the card menu and persisted on the server
+- **Player client-side auto-reload** — global toggle in Settings to reload the HLS player itself on a configurable interval (in minutes)
 
 ## Platform Support
 
@@ -61,20 +62,26 @@ services:
     image: ghcr.io/riguettodev/decap-stream:latest
     container_name: decap-stream
     restart: unless-stopped
-    shm_size: "2gb"
+    shm_size: "1gb"
     security_opt:
-      - seccomp:unconfined   # required for Chromium syscalls
+      - seccomp:unconfined
+    # gpus: all                 # Uncomment for NVIDIA (nvenc) — requires nvidia-container-toolkit on host
+    # devices:
+    #   - /dev/dri:/dev/dri     # Uncomment for Intel/AMD (vaapi or qsv)
     environment:
-      # TZ: America/Sao_Paulo
-      # AUTH_USER: admin          # optional: enables login if both are set
+      TZ: America/Sao_Paulo
+      # FFMPEG_HWACCEL: nvenc   # GPU encoding: nvenc (NVIDIA), vaapi (Intel/AMD), qsv (Intel QSV) / Requires: nvenc → gpus: all  |  vaapi/qsv → devices: /dev/dri
+      # LD_LIBRARY_PATH: /usr/lib/wsl/lib  # WSL2 + nvenc only: injects NVENC libs not auto-mounted by Docker
+      # AUTH_USER: admin        # Se definido (junto com AUTH_PASS), habilita login
       # AUTH_PASS: secure_password
     ports:
       - "3000:3000"             # Web UI — main entry point
-      - "127.0.0.1:6080:6080"   # VNC — localhost only; remote access via tunnel/VPN
-      # - "1935:1935"           # RTMP — expose only for external ingest (e.g. OBS)
-      # - "8888:8888"           # HLS  — internal only; proxied through the UI at /api/hls/
+      - "127.0.0.1:6080:6080"   # VNC  — localhost only; remote access via tunnel/VPN
+      # - "1935:1935"           # RTMP — internal only; expose only for external ingest (e.g. OBS)
+      # - "8888:8888"           # HLS  — internal only; proxied through Next.js at /api/hls/
     volumes:
       - streams:/app/data/streams # Persistent: streams.json, chrome profiles, thumbs
+      # - /usr/lib/wsl/lib:/usr/lib/wsl/lib:ro  # WSL2 + nvenc: exposes libnvidia-encode.so.1
       # - logs:/app/data/logs       # Optional
 
 volumes:
@@ -109,7 +116,7 @@ Each stream gets a slug ID you define (e.g. `grafana-prod`):
 | RTMP ingest | `rtmp://<host>:1935/live/<id>` |
 | HLS manifest (proxied) | `http://<host>:3000/api/hls/live/<id>/index.m3u8` |
 | HLS manifest (direct) | `http://<host>:8888/live/<id>/index.m3u8` — requires port 8888 exposed |
-| HTML player | `http://<host>:3000/player.html?id=<id>` — static minimal page, no UI chrome |
+| HTML player | `http://<host>:3000/player/<id>.html` — static minimal page, no UI chrome |
 | VNC (inline) | `http://<host>:3000/vnc/<id>` |
 
 > **Pure mode** (toggle per card): Play Stream opens the proxied HLS `.m3u8` directly; Run HTML opens the `.html` player. Both can be pasted into VLC or any HLS-capable player, or loaded natively on TV browsers that support HLS.

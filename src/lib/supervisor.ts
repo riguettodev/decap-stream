@@ -29,6 +29,70 @@ function supervisorctl(cmd: string) {
   }
 }
 
+const NVENC_PRESET: Record<string, string> = {
+  ultrafast: "p1", superfast: "p1", veryfast: "p2",
+  faster: "p3", fast: "p3", medium: "p4",
+  slow: "p5", slower: "p6", veryslow: "p7",
+}
+
+function buildEncoderFlags(stream: Stream): string {
+  const { preset, tune, gop, bitrate, bufsize } = stream
+  const hwaccel = (process.env.FFMPEG_HWACCEL ?? "").toLowerCase().trim()
+  const lines: string[] = []
+  const ln = (s: string) => lines.push(`    ${s} \\`)
+
+  if (hwaccel === "nvenc") {
+    ln(`-c:v h264_nvenc`)
+    ln(`-preset ${NVENC_PRESET[preset] ?? "p4"}`)
+    ln(`-tune ${tune === "zerolatency" ? "ll" : "hq"}`)
+    ln(`-profile:v high`)
+    ln(`-pix_fmt yuv420p`)
+    ln(`-rc cbr`)
+    ln(`-g ${gop}`)
+    ln(`-keyint_min ${gop}`)
+    ln(`-b:v ${bitrate}`)
+    ln(`-maxrate ${bitrate}`)
+    ln(`-bufsize ${bufsize}`)
+  } else if (hwaccel === "vaapi") {
+    ln(`-vaapi_device /dev/dri/renderD128`)
+    ln(`-vf 'format=nv12,hwupload'`)
+    ln(`-c:v h264_vaapi`)
+    ln(`-profile:v baseline`)
+    ln(`-level 3.1`)
+    ln(`-g ${gop}`)
+    ln(`-keyint_min ${gop}`)
+    ln(`-b:v ${bitrate}`)
+    ln(`-maxrate ${bitrate}`)
+    ln(`-bufsize ${bufsize}`)
+  } else if (hwaccel === "qsv") {
+    ln(`-c:v h264_qsv`)
+    ln(`-preset veryfast`)
+    ln(`-profile:v baseline`)
+    ln(`-level 3.1`)
+    ln(`-pix_fmt nv12`)
+    ln(`-g ${gop}`)
+    ln(`-keyint_min ${gop}`)
+    ln(`-b:v ${bitrate}`)
+    ln(`-maxrate ${bitrate}`)
+    ln(`-bufsize ${bufsize}`)
+  } else {
+    ln(`-c:v libx264`)
+    ln(`-preset ${preset}`)
+    ln(`-tune ${tune}`)
+    ln(`-profile:v baseline`)
+    ln(`-level 3.1`)
+    ln(`-pix_fmt yuv420p`)
+    ln(`-g ${gop}`)
+    ln(`-keyint_min ${gop}`)
+    ln(`-sc_threshold 0`)
+    ln(`-b:v ${bitrate}`)
+    ln(`-maxrate ${bitrate}`)
+    ln(`-bufsize ${bufsize}`)
+  }
+
+  return lines.join("\n")
+}
+
 // converts "1920x1080" → "1920,1080" for Chrome --window-size flag
 function resolutionToChrome(res: string): string {
   return res.replace("x", ",")
@@ -64,6 +128,7 @@ export function provisionStream(stream: Stream): void {
     USER:         stream.user ?? "",
     PASS:         stream.pass ?? "",
     GPU_FLAGS:            stream.gpu ? "" : "    --disable-gpu \\\n",
+    ENCODER_FLAGS:        buildEncoderFlags(stream),
     AUTO_RELOAD:          stream.autoReload ? "true" : "false",
     AUTO_RELOAD_INTERVAL: stream.autoReloadInterval ?? 3600,
   }
@@ -153,20 +218,21 @@ function fetchAllStatuses(): Record<string, Record<string, ProgramStatus>> {
   const result: Record<string, Record<string, ProgramStatus>> = {}
   try {
     // One call for all programs — avoid N×5 blocking execSync calls per poll cycle
+    // supervisorctl exits 3 when any process is EXITED/STOPPED — || true keeps execSync from throwing
     const out = execSync(
-      `supervisorctl -c /etc/supervisor/supervisord.conf status`,
-      { stdio: "pipe" }
+      `supervisorctl -c /etc/supervisor/supervisord.conf status || true`,
+      { stdio: "pipe", shell: "/bin/sh" }
     ).toString()
     for (const line of out.split("\n")) {
       // e.g. "ffmpeg-abc123          RUNNING   pid 42, uptime 0:01:00"
-      const m = line.match(/^(\S+)-(\S+)\s+(RUNNING|STOPPED|FATAL|STARTING)/)
+      const m = line.match(/^(xvfb|chromium|autologin|autoreload|x11vnc|ffmpeg)-(\S+)\s+(RUNNING|STOPPED|FATAL|STARTING)/)
       if (!m) continue
       const [, program, id, status] = m
       if (!result[id]) result[id] = {}
       result[id][program] = status as ProgramStatus
     }
   } catch {
-    // supervisorctl can exit non-zero; return whatever was parsed
+    // fallback: supervisorctl completely unavailable
   }
 
   _statusCache = result

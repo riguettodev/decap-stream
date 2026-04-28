@@ -6,8 +6,13 @@ services:
     shm_size: "1gb"
     security_opt:
       - seccomp:unconfined
+    # gpus: all                 # Uncomment for NVIDIA (nvenc) — requires nvidia-container-toolkit on host
+    # devices:
+    #   - /dev/dri:/dev/dri     # Uncomment for Intel/AMD (vaapi or qsv)
     environment:
       TZ: America/Sao_Paulo
+      # FFMPEG_HWACCEL: nvenc   # GPU encoding: nvenc (NVIDIA), vaapi (Intel/AMD), qsv (Intel QSV) / Requires: nvenc → gpus: all  |  vaapi/qsv → devices: /dev/dri
+      # LD_LIBRARY_PATH: /usr/lib/wsl/lib  # WSL2 + nvenc only: injects NVENC libs not auto-mounted by Docker
       # AUTH_USER: admin        # Se definido (junto com AUTH_PASS), habilita login
       # AUTH_PASS: secure_password
     ports:
@@ -17,6 +22,7 @@ services:
       # - "8888:8888"           # HLS  — internal only; proxied through Next.js at /api/hls/
     volumes:
       - streams:/app/data/streams # Persistent: streams.json, chrome profiles, thumbs
+      # - /usr/lib/wsl/lib:/usr/lib/wsl/lib:ro  # WSL2 + nvenc: exposes libnvidia-encode.so.1
       # - logs:/app/data/logs       # Optional
 
 volumes:

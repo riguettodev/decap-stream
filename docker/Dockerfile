@@ -27,6 +27,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && apt-get install -y --no-install-recommends \
         xvfb x11vnc novnc websockify \
         ffmpeg supervisor xdotool tzdata \
+        mesa-va-drivers intel-media-va-driver \
         chromium \
         curl gnupg \
     && ln -sf /usr/share/zoneinfo/${TZ} /etc/localtime \
@@ -70,7 +71,6 @@ COPY docker/server.mjs /opt/server.mjs
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /opt/scripts/*.sh /entrypoint.sh
 
-VOLUME ["/app/data"]
 EXPOSE 3000 1935 8888 6080
 
 CMD ["/entrypoint.sh"]
