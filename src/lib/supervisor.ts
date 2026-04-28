@@ -63,7 +63,9 @@ export function provisionStream(stream: Stream): void {
     THREADS:      stream.threads ?? 0,
     USER:         stream.user ?? "",
     PASS:         stream.pass ?? "",
-    GPU_FLAGS:    stream.gpu ? "" : "    --disable-gpu \\\n",
+    GPU_FLAGS:            stream.gpu ? "" : "    --disable-gpu \\\n",
+    AUTO_RELOAD:          stream.autoReload ? "true" : "false",
+    AUTO_RELOAD_INTERVAL: stream.autoReloadInterval ?? 3600,
   }
 
   const confTpl = fs.readFileSync("/opt/scripts/stream.template.conf", "utf-8")
@@ -91,14 +93,21 @@ export function recreateStream(id: string): void {
 }
 
 export function startStream(id: string): void {
-  const programs = ["xvfb", "chromium", "autologin", "x11vnc", "ffmpeg"]
+  const programs = ["xvfb", "chromium", "autologin", "autoreload", "x11vnc", "ffmpeg"]
   for (const p of programs) supervisorctl(`start ${p}-${id}`)
   captureThumb(id, 60)
 }
 
 export function stopStream(id: string): void {
-  const programs = ["ffmpeg", "x11vnc", "autologin", "chromium", "xvfb"]
+  const programs = ["ffmpeg", "x11vnc", "autoreload", "autologin", "chromium", "xvfb"]
   for (const p of programs) supervisorctl(`stop ${p}-${id}`)
+}
+
+export function applyAutoReload(id: string): void {
+  const stream = getStream(id)
+  if (!stream) return
+  supervisorctl(`stop autoreload-${id}`)
+  if (stream.autoReload) supervisorctl(`start autoreload-${id}`)
 }
 
 export function restartStream(id: string): void {

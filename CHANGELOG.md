@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Chromium auto-reload** — per-stream toggle to reload the browser page on a configurable interval via Chrome DevTools Protocol. Implemented as a dedicated Supervisord process (`autoreload-{id}`) using a raw WebSocket CDP connection (no external dependencies). Responds cleanly to `supervisorctl stop` via SIGTERM trap. Interval is set in minutes from the card's 3-dot menu and persisted server-side. Toggle applies via `POST /api/streams/{id}/autoreload` without restarting the stream.
+
+---
+
 ## Decap Stream v1.0.0
 
 Turn any web page into an RTMP/HLS stream. Chromium renders the page in a virtual display, ffmpeg captures it, and MediaMTX publishes it, all managed through a web UI.

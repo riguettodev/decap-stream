@@ -41,6 +41,7 @@ All processes are managed by Supervisord. The web UI is a Next.js app that contr
 - **Built-in HLS player** — watch any stream in the browser via a standalone HTML page optimized for TVs (Back + Mute buttons, reconnect on stall, direct MediaMTX connection when available)
 - **Per-card Pure mode** — toggle in the card menu to open Play Stream as a raw `.m3u8` link or Run HTML as a minimal `.html` page with no UI; works with native players and TV browsers
 - **Per-card new tab** — toggle to open any button in a new tab instead of navigating in place; both settings are per-card and saved in the browser
+- **Chromium auto-reload** — per-card toggle to reload the browser page on a configurable interval; uses Chrome DevTools Protocol (no xdotool focus tricks); configured from the card menu and persisted on the server
 
 ## Platform Support
 
@@ -132,6 +133,8 @@ Each stream gets a slug ID you define (e.g. `grafana-prod`):
 | `gop` | `60` | Keyframe interval (auto-calculated as 2x FPS in the UI) |
 | `threads` | `0` | ffmpeg encoding threads (`0` = auto-detect) |
 | `gpu` | `false` | Enable Chromium GPU acceleration (requires host GPU + container access) |
+| `autoReload` | `false` | Reload the Chromium page on a fixed interval via CDP; toggled from the card menu |
+| `autoReloadInterval` | `3600` | Interval in seconds between automatic page reloads |
 
 ## Architecture
 
@@ -146,6 +149,7 @@ Each stream gets a slug ID you define (e.g. `grafana-prod`):
 │                                   ├── xvfb       (display)  │
 │                                   ├── chromium   (browser)  │
 │                                   ├── autologin  (CDP)      │
+│                                   ├── autoreload (CDP)      │
 │                                   ├── x11vnc     (VNC)      │
 │                                   └── ffmpeg     (encode)   │
 │                                         │                   │

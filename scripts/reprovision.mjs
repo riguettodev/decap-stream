@@ -48,7 +48,9 @@ for (const stream of streams) {
     THREADS:      stream.threads ?? 0,
     USER:         stream.user ?? '',
     PASS:         stream.pass ?? '',
-    GPU_FLAGS:    stream.gpu ? '' : '    --disable-gpu \\\n',
+    GPU_FLAGS:           stream.gpu ? '' : '    --disable-gpu \\\n',
+    AUTO_RELOAD:         stream.autoReload ? 'true' : 'false',
+    AUTO_RELOAD_INTERVAL: stream.autoReloadInterval ?? 3600,
   }
 
   fs.writeFileSync(path.join(dir, 'stream.conf'), render(confTpl, vars), 'utf-8')

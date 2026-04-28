@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { MoreHorizontal, Play, Globe, Monitor, Pencil, RotateCcw, Square, Trash2, Circle, Copy, Check, Video, ImageUp, GripVertical, Wrench } from "lucide-react"
+import { MoreHorizontal, Play, Globe, Monitor, Pencil, RotateCcw, Square, Trash2, Circle, Copy, Check, Video, ImageUp, GripVertical, Wrench, RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Toggle } from "@/components/Toggle"
 import type { Stream } from "@/types/stream"
@@ -106,6 +106,8 @@ export function StreamCard({ stream, status, localStatus, cardSize = "md", onRef
   const [thumbError, setThumbError] = useState(false)
   const [thumbCapturing, setThumbCapturing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [autoReload, setAutoReload] = useState(stream.autoReload ?? false)
+  const [autoReloadMins, setAutoReloadMins] = useState(Math.round((stream.autoReloadInterval ?? 3600) / 60))
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
@@ -161,6 +163,24 @@ export function StreamCard({ stream, status, localStatus, cardSize = "md", onRef
     copyToClipboard(url).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  async function toggleAutoReload() {
+    const next = !autoReload
+    setAutoReload(next)
+    await fetch(`/api/streams/${stream.id}/autoreload`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: next, interval: autoReloadMins * 60 }),
+    })
+  }
+
+  async function saveAutoReloadInterval(mins: number) {
+    await fetch(`/api/streams/${stream.id}/autoreload`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: autoReload, interval: mins * 60 }),
     })
   }
 
@@ -274,6 +294,35 @@ export function StreamCard({ stream, status, localStatus, cardSize = "md", onRef
                     <ImageUp className="w-3.5 h-3.5" />
                     {thumbCapturing ? "Capturing..." : "Refresh thumbnail"}
                   </button>
+                  <div className="border-t border-border" />
+                  <div className="px-3 py-2 flex flex-col gap-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm flex items-center gap-2">
+                        <RefreshCw className="w-3.5 h-3.5 shrink-0" /> Auto-reload
+                      </span>
+                      <button
+                        onClick={toggleAutoReload}
+                        className={cn("relative w-9 h-5 rounded-full transition-colors shrink-0 overflow-hidden", autoReload ? "bg-blue-600" : "bg-zinc-600")}
+                      >
+                        <span className={cn("absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all", autoReload ? "left-[18px]" : "left-0.5")} />
+                      </button>
+                    </div>
+                    {autoReload && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">Every</span>
+                        <input
+                          type="number"
+                          min={1}
+                          value={autoReloadMins}
+                          onChange={e => setAutoReloadMins(Math.max(1, Number(e.target.value) || 1))}
+                          onBlur={() => saveAutoReloadInterval(autoReloadMins)}
+                          onKeyDown={e => { if (e.key === "Enter") saveAutoReloadInterval(autoReloadMins) }}
+                          className="w-16 text-xs bg-[#2a2a2a] border border-border rounded px-2 py-0.5 text-center"
+                        />
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">min</span>
+                      </div>
+                    )}
+                  </div>
                   <div className="border-t border-border" />
                   <button onClick={remove} className={cn(menuItem, "text-destructive")}>
                     <Trash2 className="w-3.5 h-3.5" /> Delete

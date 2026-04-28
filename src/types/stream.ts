@@ -24,6 +24,9 @@ export interface Stream {
 
   gpu: boolean
 
+  autoReload?: boolean
+  autoReloadInterval?: number  // seconds
+
   desiredState: "running" | "stopped"  // persisted desired state, restored on container restart
 
   order: number
