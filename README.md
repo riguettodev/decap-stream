@@ -72,10 +72,14 @@ services:
     #   - /dev/dri:/dev/dri     # Uncomment for Intel/AMD (vaapi or qsv)
     environment:
       TZ: America/Sao_Paulo
-      # FFMPEG_HWACCEL: nvenc   # GPU encoding: nvenc (NVIDIA), vaapi (Intel/AMD), qsv (Intel QSV) / Requires: nvenc → gpus: all  |  vaapi/qsv → devices: /dev/dri
-      # LD_LIBRARY_PATH: /usr/lib/wsl/lib  # WSL2 + nvenc only: injects NVENC libs not auto-mounted by Docker
-      # AUTH_USER: admin        # Se definido (junto com AUTH_PASS), habilita login
+      # AUTH_USER: admin              # If set (with AUTH_PASS), enables login
       # AUTH_PASS: secure_password
+      DEFAULT_PURE_MODE: false      # Pure mode: raw .m3u8 / minimal player (no UI chrome)
+      DEFAULT_OPEN_NEW_TAB: false   # Open player buttons in a new tab
+      DEFAULT_RELOAD_CLIENT: false  # Auto-reload the client player page
+      DEFAULT_RELOAD_CLIENT_TIME: 2 # Client auto-reload interval in minutes
+      # FFMPEG_HWACCEL: nvenc         # GPU encoding: nvenc (NVIDIA), vaapi / qsv (Intel/AMD)
+      # LD_LIBRARY_PATH: /usr/lib/wsl/lib  # WSL2 + nvenc only
     ports:
       - "3000:3000"             # Web UI — main entry point
       - "127.0.0.1:6080:6080"   # VNC  — localhost only; remote access via tunnel/VPN

@@ -183,7 +183,13 @@ export default function GalleryPage() {
       const savedSize = localStorage.getItem("cardSize") as CardSize | null
       if (savedSize) setCardSize(savedSize)
       const savedPrefs = localStorage.getItem("global-prefs")
-      if (savedPrefs) setGlobalPrefs({ ...DEFAULT_GLOBAL_PREFS, ...JSON.parse(savedPrefs) })
+      if (savedPrefs) {
+        setGlobalPrefs({ ...DEFAULT_GLOBAL_PREFS, ...JSON.parse(savedPrefs) })
+      } else {
+        fetch("/api/config").then(r => r.json()).then((d: Partial<GlobalPrefs>) => {
+          setGlobalPrefs(prev => ({ ...prev, ...d }))
+        }).catch(() => {})
+      }
     } catch {}
   }, [])
 

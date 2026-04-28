@@ -9,10 +9,11 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
 <html>
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
     html,body{background:#000;overflow:hidden;width:100%;height:100%}
-    video{width:100vw;height:100vh;display:block;object-fit:contain}
+    video{width:100vw;height:100vh;height:100dvh;display:block;object-fit:contain}
     #msg{
       position:fixed;top:16px;left:50%;transform:translateX(-50%);
       background:rgba(0,0,0,0.75);color:#fff;padding:8px 20px;
@@ -31,7 +32,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   </style>
 </head>
 <body>
-  <video id="v" autoplay playsinline></video>
+  <video id="v" autoplay muted playsinline></video>
   <div id="msg"></div>
   <button id="back" onclick="history.back()">
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
@@ -76,20 +77,29 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
       uiTimer=setTimeout(function(){backBtn.style.opacity='0';muteBtn.style.opacity='0';},5000);
     }
     document.addEventListener('mousemove',showUI);
+    document.addEventListener('touchstart',showUI);
     showUI();
 
     function startHls(src){
       activeSrc=src;
+      var v=document.getElementById('v');
       if(hls)hls.destroy();
+      if(!Hls.isSupported()){
+        if(v.canPlayType('application/vnd.apple.mpegurl')){
+          v.src=src;
+          var p=v.play();
+          if(p)p.catch(function(){v.muted=true;updateMuteIcon(true);v.play();});
+        }
+        return;
+      }
       hls=new Hls({
         liveSyncDurationCount:2,liveMaxLatencyDurationCount:4,
         manifestLoadingTimeOut:10000,manifestLoadingMaxRetry:10,
         fragLoadingTimeOut:10000,fragLoadingMaxRetry:10
       });
       hls.loadSource(src);
-      hls.attachMedia(document.getElementById('v'));
+      hls.attachMedia(v);
       hls.on(Hls.Events.MANIFEST_PARSED,function(){
-        var v=document.getElementById('v');
         var p=v.play();
         if(p)p.catch(function(){
           v.muted=true;
@@ -106,14 +116,21 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
 
     // Try direct MediaMTX first (lower latency, avoids proxy buffering).
     // Falls back to proxy if port 8888 is not reachable from this client.
-    fetch(directUrl,{method:'HEAD',signal:AbortSignal.timeout(2000)})
-      .then(function(){startHls(directUrl);})
-      .catch(function(){startHls(proxyUrl);});
+    var ctrl=new AbortController();
+    var fetchTimer=setTimeout(function(){ctrl.abort();},2000);
+    fetch(directUrl,{method:'HEAD',signal:ctrl.signal})
+      .then(function(){clearTimeout(fetchTimer);startHls(directUrl);})
+      .catch(function(){clearTimeout(fetchTimer);startHls(proxyUrl);});
 
-    var last=0;
+    var last=0,started=false;
     setInterval(function(){
       var v=document.getElementById('v');
-      if(v.currentTime===last&&!v.paused){showMsg('Stream stalled — reloading...');startHls(activeSrc);}
+      if(!started&&v.currentTime>0)started=true;
+      if(started&&v.currentTime===last&&!v.paused){
+        showMsg('Stream stalled — reloading...');
+        if(hls)startHls(activeSrc);
+        else{var s=v.src;v.src='';v.src=s;v.play().catch(function(){});}
+      }
       last=v.currentTime;
     },10000);
 

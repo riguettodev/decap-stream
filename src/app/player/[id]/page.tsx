@@ -24,8 +24,10 @@ function BackButton({ onClick }: { onClick: () => void }) {
   useEffect(() => {
     show()
     window.addEventListener("mousemove", show)
+    window.addEventListener("touchstart", show)
     return () => {
       window.removeEventListener("mousemove", show)
+      window.removeEventListener("touchstart", show)
       if (timerRef.current) clearTimeout(timerRef.current)
     }
   }, [show])
@@ -34,7 +36,7 @@ function BackButton({ onClick }: { onClick: () => void }) {
     <button
       onClick={onClick}
       style={{ opacity: visible ? 1 : 0, transition: "opacity 0.4s" }}
-      className="absolute top-4 left-4 z-20 flex items-center gap-1.5 text-sm text-white bg-black/40 px-3 py-1.5 rounded-lg cursor-pointer"
+      className="absolute top-4 left-4 z-20 flex items-center gap-2 sm:gap-1.5 text-[1.1rem] sm:text-sm text-white bg-black/40 px-5 py-3 sm:px-3 sm:py-1.5 rounded-[10px] sm:rounded-lg cursor-pointer"
     >
       <ArrowLeft className="w-4 h-4" /> Back
     </button>
@@ -86,18 +88,24 @@ function VideoPlayer({ src, controls }: { src: string; controls?: boolean }) {
       if (Hls.isSupported()) {
         load(Hls)
       } else if (v.canPlayType("application/vnd.apple.mpegurl")) {
-        // Safari nativo
+        // iOS Safari native HLS
         v.src = src
-        v.play()
+        v.play().catch(() => { v.muted = true; v.play().catch(() => {}) })
       }
     }
     document.head.appendChild(script)
 
-    // stall detection
+    // stall detection — only fires after video has actually played once
     let last = 0
+    let started = false
     const interval = setInterval(() => {
       if (!v) return
-      if (v.currentTime === last && !v.paused) { showMsg("Stream stalled — reloading..."); hlsRef.current && load(window.Hls) }
+      if (!started && v.currentTime > 0) started = true
+      if (started && v.currentTime === last && !v.paused) {
+        showMsg("Stream stalled — reloading...")
+        if (hlsRef.current) load(window.Hls)
+        else { const s = v.src; v.src = ""; v.src = s; v.play().catch(() => {}) }
+      }
       last = v.currentTime
     }, 10000)
 
@@ -110,7 +118,7 @@ function VideoPlayer({ src, controls }: { src: string; controls?: boolean }) {
 
   return (
     <>
-      <video ref={videoRef} autoPlay muted playsInline controls={controls} className="w-screen h-screen object-contain bg-black" />
+      <video ref={videoRef} autoPlay muted playsInline controls={controls} className="w-screen h-screen object-contain bg-black" style={{ height: "100dvh" }} />
       {msg && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-black/75 text-white px-5 py-2 rounded-lg text-sm z-10">{msg}</div>
       )}
@@ -137,10 +145,10 @@ function PlayerInner() {
   }, [])
 
   return (
-    <div className="relative bg-black w-screen h-screen overflow-hidden">
+    <div className="relative bg-black w-screen h-screen overflow-hidden" style={{ height: "100dvh" }}>
       <BackButton onClick={() => router.push("/")} />
       {mode === "hls"  && <VideoPlayer src={streamSrc} controls />}
-      {mode === "html" && <iframe src={`/static/${id}`} className="w-screen h-screen border-0" allowFullScreen />}
+      {mode === "html" && <iframe src={`/static/${id}`} className="w-screen border-0" style={{ height: "100dvh" }} allowFullScreen />}
     </div>
   )
 }

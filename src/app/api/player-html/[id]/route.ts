@@ -61,9 +61,11 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
       last=v.currentTime;
     },10000);
 
-    fetch(directUrl,{method:'HEAD',signal:AbortSignal.timeout(2000)})
-      .then(function(){load(directUrl);})
-      .catch(function(){load(proxyUrl);});
+    var ctrl=new AbortController();
+    var fetchTimer=setTimeout(function(){ctrl.abort();},2000);
+    fetch(directUrl,{method:'HEAD',signal:ctrl.signal})
+      .then(function(){clearTimeout(fetchTimer);load(directUrl);})
+      .catch(function(){clearTimeout(fetchTimer);load(proxyUrl);});
   </script>
 </body>
 </html>`
