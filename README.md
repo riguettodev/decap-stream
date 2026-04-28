@@ -10,8 +10,9 @@ Turn any web page into an RTMP/HLS stream. Chromium renders the page, ffmpeg cap
 ![Dashboard](./screenshots/dashboard.png)
 
 <p align="center">
-  <img src="./screenshots/stream-config.png" alt="Stream Config" width="49%" />
-  <img src="./screenshots/login.png" alt="Login Page" width="49%" />
+  <img src="./screenshots/dashboard-config.png" alt="Dashboard Config" width="32.5%" />
+  <img src="./screenshots/stream-config.png" alt="Stream Config" width="32.5%" />
+  <img src="./screenshots/login.png" alt="Login Page" width="32.5%" />
 </p>
 
 ## How it works
@@ -43,6 +44,7 @@ All processes are managed by Supervisord. The web UI is a Next.js app that contr
 - **Open in new tab** — global toggle in Settings to open any button in a new tab instead of navigating in place; saved in the browser
 - **Chromium auto-reload** — per-stream toggle to reload the Chromium page on a configurable interval via Chrome DevTools Protocol; configured from the card menu and persisted on the server
 - **Player client-side auto-reload** — global toggle in Settings to reload the HLS player itself on a configurable interval (in minutes)
+- **Mobile-friendly UI** — responsive layout for phones (< 640 px): Add and Refresh become floating action buttons in the bottom-right corner, cards fill the screen width automatically, no horizontal scroll; installable as a PWA with separate light/dark home-screen icons
 
 ## Platform Support
 

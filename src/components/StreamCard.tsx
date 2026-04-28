@@ -59,7 +59,7 @@ function copyToClipboard(text: string) {
   return Promise.resolve()
 }
 
-const CARD_WIDTHS = { mini: "max-w-[200px]", sm: "max-w-[240px]", md: "max-w-[300px]", lg: "max-w-[380px]" }
+const CARD_WIDTHS = { mini: "sm:max-w-[200px]", sm: "sm:max-w-[240px]", md: "sm:max-w-[300px]", lg: "sm:max-w-[380px]" }
 
 const SCALE = {
   mini: { card: "p-2 gap-2",     name: "text-xs",  meta: "text-[10px]", btn: "text-[10px] px-2 py-1 gap-1.5",   btnIcon: "w-2.5 h-2.5", menuIcon: "w-3.5 h-3.5", dot: "w-1.5 h-1.5" },

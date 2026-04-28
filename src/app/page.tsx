@@ -1,7 +1,8 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import { Plus, Download, RefreshCw, Settings, X, LogOut } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { StreamCard } from "@/components/StreamCard"
 import { Toggle } from "@/components/Toggle"
 import type { Stream } from "@/types/stream"
@@ -15,7 +16,7 @@ type GlobalPrefs = { pureMode: boolean; newTab: boolean; autoReload: boolean; re
 
 const DEFAULT_GLOBAL_PREFS: GlobalPrefs = { pureMode: false, newTab: false, autoReload: false, reloadInterval: 2 }
 
-const CARD_WIDTHS: Record<CardSize, string> = { mini: "max-w-[200px]", sm: "max-w-[240px]", md: "max-w-[300px]", lg: "max-w-[380px]" }
+const CARD_WIDTHS: Record<CardSize, string> = { mini: "sm:max-w-[200px]", sm: "sm:max-w-[240px]", md: "sm:max-w-[300px]", lg: "sm:max-w-[380px]" }
 
 function SortableStreamCard(props: {
   stream: Stream
@@ -41,7 +42,7 @@ function SortableStreamCard(props: {
 }
 
 function SkeletonCard({ size = "sm" }: { size?: CardSize }) {
-  const widths = { mini: "max-w-[200px]", sm: "max-w-[240px]", md: "max-w-[300px]", lg: "max-w-[380px]" }
+  const widths = { mini: "sm:max-w-[200px]", sm: "sm:max-w-[240px]", md: "sm:max-w-[300px]", lg: "sm:max-w-[380px]" }
   return (
     <div className={`rounded-lg border border-border bg-card p-3 flex flex-col gap-2.5 w-full ${widths[size]} animate-pulse`}>
       <div className="flex justify-between items-start">
@@ -82,7 +83,7 @@ function SettingsPopup({ cardSize, onCardSize, globalPrefs, onGlobalPrefs, authE
           </button>
         </div>
 
-        <div className="flex flex-col gap-2">
+        <div className="hidden sm:flex flex-col gap-2">
           <p className="text-xs text-muted-foreground tracking-wider uppercase">Card size</p>
           <div className="flex gap-2">
             {(["mini", "sm", "md", "lg"] as CardSize[]).map((s) => (
@@ -154,6 +155,8 @@ export default function GalleryPage() {
   const [localStatuses, setLocalStatuses] = useState<Record<string, string | null>>({})
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [spinningFab, setSpinningFab] = useState(false)
+  const spinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [cardSize, setCardSize] = useState<CardSize>("md")
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [authEnabled, setAuthEnabled] = useState(false)
@@ -224,6 +227,15 @@ export default function GalleryPage() {
     setLocalStatuses((prev) => ({ ...prev, [id]: s }))
   }, [])
 
+  async function handleFabRefresh() {
+    if (spinTimerRef.current) clearTimeout(spinTimerRef.current)
+    setSpinningFab(true)
+    const t0 = Date.now()
+    await fetchStreams(true)
+    const remaining = Math.max(0, 1000 - (Date.now() - t0))
+    spinTimerRef.current = setTimeout(() => setSpinningFab(false), remaining)
+  }
+
   function downloadPlaylist() {
     window.location.href = `/api/streams/playlist?host=${window.location.hostname}&port=8888`
   }
@@ -235,21 +247,21 @@ export default function GalleryPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="border-b border-border px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <img src="/web-app-manifest-192x192.png" alt="Decap Stream" className="w-6 h-6 rounded" />
-          <h1 className="text-lg font-semibold tracking-tight">Decap Stream</h1>
-          <span className="text-muted-foreground/40 text-sm select-none">·</span>
-          <a href="https://riguetto.dev" target="_blank" rel="noopener noreferrer" className="text-xs text-[#888] hover:text-[#ededed] hover:underline transition-colors">riguetto.dev</a>
+      <header className="border-b border-border px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+          <img src="/web-app-manifest-192x192.png" alt="Decap Stream" className="w-6 h-6 rounded shrink-0" />
+          <h1 className="text-lg font-semibold tracking-tight whitespace-nowrap">Decap Stream</h1>
+          <span className="text-muted-foreground/40 text-sm select-none whitespace-nowrap">·</span>
+          <a href="https://riguetto.dev" target="_blank" rel="noopener noreferrer" className="text-xs text-[#888] hover:text-[#ededed] hover:underline transition-colors whitespace-nowrap">riguetto.dev</a>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => fetchStreams(true)} className={btnBase} title="Refresh">
-            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+        <div className="flex items-center gap-2 shrink-0">
+          <button onClick={handleFabRefresh} className={cn(btnBase, "hidden sm:flex")} title="Refresh">
+            <RefreshCw className={`w-3.5 h-3.5 ${spinningFab ? "animate-spin" : ""}`} />
           </button>
           <button onClick={() => setSettingsOpen((v) => !v)} className={btnBase} title="Settings">
             <Settings className="w-3.5 h-3.5" />
           </button>
-          <button onClick={() => window.location.href = "/streams/new"} className={btnPrimary} title="New stream">
+          <button onClick={() => window.location.href = "/streams/new"} className={cn(btnPrimary, "hidden sm:flex")} title="New stream">
             <Plus className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -268,9 +280,9 @@ export default function GalleryPage() {
         />
       )}
 
-      <main className="flex-1 p-6">
+      <main className="flex-1 px-3 pt-3 pb-40 sm:p-6">
         {showSkeleton ? (
-          <div className="flex flex-wrap gap-4">
+          <div className="flex flex-wrap gap-3 sm:gap-4 justify-center sm:justify-start">
             {[...Array(refreshing ? Math.max(streams.length, 1) : 4)].map((_, i) => (
               <SkeletonCard key={i} size={cardSize} />
             ))}
@@ -285,7 +297,7 @@ export default function GalleryPage() {
         ) : (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={streams.map((s) => s.id)} strategy={rectSortingStrategy}>
-              <div className="flex flex-wrap gap-4">
+              <div className="flex flex-wrap gap-3 sm:gap-4 justify-center sm:justify-start">
                 {streams.map((s) => (
                   <SortableStreamCard
                     key={s.id}
@@ -303,6 +315,23 @@ export default function GalleryPage() {
           </DndContext>
         )}
       </main>
+
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-center gap-3 sm:hidden">
+        <button
+          onClick={handleFabRefresh}
+          className="w-12 h-12 rounded-full border border-[#333] bg-[#1c1c1c] shadow-lg flex items-center justify-center active:bg-[#333] transition-colors"
+          title="Refresh"
+        >
+          <RefreshCw className={`w-4 h-4 ${spinningFab ? "animate-spin" : ""}`} />
+        </button>
+        <button
+          onClick={() => window.location.href = "/streams/new"}
+          className="w-14 h-14 rounded-full border border-[#333] bg-[#1c1c1c] shadow-lg flex items-center justify-center active:bg-[#333] transition-colors"
+          title="New stream"
+        >
+          <Plus className="w-6 h-6" />
+        </button>
+      </div>
     </div>
   )
 }

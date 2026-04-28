@@ -281,18 +281,10 @@ export function StreamForm({ initial }: Props) {
                 <div className="flex items-center gap-3">
                   <button
                     type="button"
-                    role="switch"
-                    aria-checked={form.gpu ?? false}
                     onClick={() => set("gpu", !form.gpu)}
-                    className={cn(
-                      "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none",
-                      form.gpu ? "bg-primary" : "bg-zinc-600"
-                    )}
+                    className={cn("relative w-9 h-5 rounded-full transition-colors shrink-0 overflow-hidden", form.gpu ? "bg-blue-600" : "bg-zinc-600")}
                   >
-                    <span className={cn(
-                      "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-lg transform transition-transform",
-                      form.gpu ? "translate-x-4" : "translate-x-0"
-                    )} />
+                    <span className={cn("absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all", form.gpu ? "left-[18px]" : "left-0.5")} />
                   </button>
                   <div className="flex items-center gap-1.5">
                     <span className="text-sm">GPU acceleration (Chromium)</span>

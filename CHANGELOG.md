@@ -16,6 +16,7 @@ Turn any web page into an RTMP/HLS stream. Chromium renders the page in a virtua
 - **Open in new tab** — global toggle in Settings to open any action button in a new tab; saved in the browser
 - **Optional UI authentication** — set `AUTH_USER` + `AUTH_PASS` to password-protect the entire UI
 - **Persistent desired state** — streams restore automatically on container restart
+- **Mobile-friendly UI** — responsive layout for phones: floating Add/Refresh FABs, full-width cards, no horizontal scroll
 
 ### Quick start
 
@@ -24,7 +25,7 @@ services:
   decap-stream:
     image: ghcr.io/riguettodev/decap-stream:latest
     restart: unless-stopped
-    shm_size: "2gb"
+    shm_size: "1gb"
     security_opt:
       - seccomp:unconfined
     ports:
