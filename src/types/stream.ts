@@ -30,6 +30,7 @@ export interface Stream {
   desiredState: "running" | "stopped"  // persisted desired state, restored on container restart
 
   order: number
+  tvPosition?: number | null  // TV Layout: absolute slot index (0-based), null = auto-placed
 
   createdAt: string
   updatedAt: string
