@@ -1,13 +1,14 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef } from "react"
-import { Plus, Download, RefreshCw, Settings, X, LogOut, Tv } from "lucide-react"
+import { Plus, Download, RefreshCw, Settings, X, LogOut, Tv, Users } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { StreamCard } from "@/components/StreamCard"
 import { Toggle } from "@/components/Toggle"
 import { TvLayoutGrid } from "@/components/TvLayoutGrid"
+import { ViewersPopup } from "@/components/ViewersPopup"
 import type { TvClickAction } from "@/components/TvLayoutGrid"
-import type { Stream } from "@/types/stream"
+import type { Stream, ViewersResponse } from "@/types/stream"
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core"
 import type { DragEndEvent } from "@dnd-kit/core"
 import { SortableContext, useSortable, rectSortingStrategy, arrayMove } from "@dnd-kit/sortable"
@@ -232,6 +233,8 @@ export default function GalleryPage() {
   const spinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [cardSize, setCardSize] = useState<CardSize>("md")
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [viewersOpen, setViewersOpen] = useState(false)
+  const [viewersData, setViewersData] = useState<ViewersResponse | null>(null)
   const [authEnabled, setAuthEnabled] = useState(false)
   const [globalPrefs, setGlobalPrefs] = useState<GlobalPrefs>(DEFAULT_GLOBAL_PREFS)
   const [tvLayoutActive, setTvLayoutActive] = useState(false)
@@ -321,6 +324,19 @@ export default function GalleryPage() {
     return () => clearInterval(interval)
   }, [streams, fetchStatuses])
 
+  useEffect(() => {
+    const fetchViewers = async () => {
+      try {
+        const res = await fetch("/api/streams/viewers")
+        const data: ViewersResponse = await res.json()
+        setViewersData(data)
+      } catch {}
+    }
+    fetchViewers()
+    const interval = setInterval(fetchViewers, viewersOpen ? 5000 : 10000)
+    return () => clearInterval(interval)
+  }, [viewersOpen])
+
   const setLocalStatus = useCallback((id: string, s: string | null) => {
     setLocalStatuses((prev) => ({ ...prev, [id]: s }))
   }, [])
@@ -360,10 +376,24 @@ export default function GalleryPage() {
           )}
           <button
             onClick={() => updateTvLayoutActive(!tvLayoutActive)}
-            className={cn(btnBase, tvLayoutActive && "border-primary text-primary")}
+            className={cn(btnBase, "hidden sm:flex", tvLayoutActive && "border-primary text-primary")}
             title="TV Layout"
           >
             <Tv className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => setViewersOpen((v) => !v)}
+            className={cn(btnBase, viewersOpen && "border-primary text-primary")}
+            title="Viewers ativos"
+          >
+            <span className="relative">
+              <Users className="w-3.5 h-3.5" />
+              {(viewersData?.total ?? 0) > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] font-medium rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none">
+                  {viewersData!.total}
+                </span>
+              )}
+            </span>
           </button>
           <button onClick={() => setSettingsOpen((v) => !v)} className={btnBase} title="Settings">
             <Settings className="w-3.5 h-3.5" />
@@ -375,6 +405,15 @@ export default function GalleryPage() {
           )}
         </div>
       </header>
+
+      {viewersOpen && (
+        <ViewersPopup
+          data={viewersData}
+          streams={streams}
+          pureMode={globalPrefs.pureMode}
+          onClose={() => setViewersOpen(false)}
+        />
+      )}
 
       {settingsOpen && (
         <SettingsPopup

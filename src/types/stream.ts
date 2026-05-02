@@ -39,6 +39,31 @@ export interface Stream {
 export type StreamCreate = Omit<Stream, "display" | "vncPort" | "debugPort" | "createdAt" | "updatedAt" | "desiredState" | "order">
 export type StreamUpdate = Partial<StreamCreate>
 
+export type ViewerMode = "hls" | "html" | "vnc"
+export interface ViewerSession {
+  ip: string
+  streamId: string
+  mode: ViewerMode
+  connectedAt: number
+  lastSeenAt: number
+}
+
+export interface ViewerEntry {
+  ip: string
+  mode: ViewerMode
+  connectedAt: number
+  lastSeenAt: number
+  durationMs: number
+}
+export interface ViewersResponse {
+  total: number
+  streams: Record<string, { count: number; viewers: ViewerEntry[] }>
+}
+
+declare global {
+  var __vncViewers: Map<string, ViewerSession> | undefined
+}
+
 export const STREAM_DEFAULTS: Omit<StreamCreate, "id" | "name" | "url"> = {
   delay: 15,
   resolution: "1920x1080",
