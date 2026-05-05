@@ -12,7 +12,11 @@ Turn any web page into an RTMP/HLS stream. Chromium renders the page, ffmpeg cap
 <p align="center">
   <img src="./screenshots/dashboard-config.png" alt="Dashboard Config" width="32.5%" />
   <img src="./screenshots/stream-config.png" alt="Stream Config" width="32.5%" />
-  <img src="./screenshots/login.png" alt="Login Page" width="32.5%" />
+  <img src="./screenshots/dashboard-tvlayout.png" alt="Dashboard TV-Layout" width="32.5%" />
+</p>
+
+<p align="center">
+  <img src="./screenshots/player-tvwall.png" alt="Player TV-Wall" width="98%" />
 </p>
 
 ## How it works
