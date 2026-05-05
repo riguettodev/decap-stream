@@ -8,6 +8,21 @@ const _createServer = http.createServer.bind(http)
 
 function attachWebSocketProxy(server) {
   server.on("upgrade", (req, socket, head) => {
+    const url = new URL(req.url, "http://localhost")
+    const token = url.searchParams.get("token")
+    const ip =
+      req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ??
+      req.headers["x-real-ip"] ??
+      req.socket?.remoteAddress ??
+      "unknown"
+    if (token) {
+      globalThis.__vncViewers ??= new Map()
+      const key = `${token}:${ip}`
+      const now = Date.now()
+      globalThis.__vncViewers.set(key, { ip, streamId: token, mode: "vnc", connectedAt: now, lastSeenAt: now })
+      socket.on("close", () => { globalThis.__vncViewers?.delete(key) })
+    }
+
     const upstream = net.connect({ host: "127.0.0.1", port: 6080 })
 
     upstream.once("connect", () => {
