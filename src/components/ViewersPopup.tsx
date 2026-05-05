@@ -1,4 +1,4 @@
-import { X, Play, Globe, Monitor } from "lucide-react"
+import { X, Play, Globe, Monitor, LayoutGrid } from "lucide-react"
 import type { ViewerMode, ViewersResponse } from "@/types/stream"
 import type { Stream } from "@/types/stream"
 
@@ -15,13 +15,17 @@ const modeIcon: Record<ViewerMode, React.ReactNode> = {
   hls: <Play className="w-3 h-3 shrink-0" />,
   html: <Globe className="w-3 h-3 shrink-0" />,
   vnc: <Monitor className="w-3 h-3 shrink-0" />,
+  wall: <LayoutGrid className="w-3 h-3 shrink-0" />,
 }
 
 const modeLabel: Record<ViewerMode, string> = {
   hls: "HLS",
   html: "HTML",
   vnc: "VNC",
+  wall: "Wall",
 }
+
+const WALL_KEY = "__wall"
 
 export function ViewersPopup({
   data,
@@ -67,7 +71,7 @@ export function ViewersPopup({
               {Object.entries(data.streams).map(([streamId, { count, viewers }]) => (
                 <div key={streamId} className="px-4 py-3 flex flex-col gap-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium truncate">{streamMap[streamId] ?? streamId}</span>
+                    <span className="text-xs font-medium truncate">{streamId === WALL_KEY ? "TV Wall" : (streamMap[streamId] ?? streamId)}</span>
                     <span className="text-[10px] text-muted-foreground bg-muted rounded-full px-1.5 py-0.5 shrink-0 ml-2">
                       {count}
                     </span>

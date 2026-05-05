@@ -17,6 +17,10 @@ services:
       DEFAULT_OPEN_NEW_TAB: false   # Open player buttons in a new tab
       DEFAULT_RELOAD_CLIENT: false  # Auto-reload the client player page
       DEFAULT_RELOAD_CLIENT_TIME: 2 # Client auto-reload interval in minutes
+      DEFAULT_TV_LAYOUT: false      # Activate TV Layout by default
+      DEFAULT_TV_ROWS: 3            # Default Rows for TV Layout
+      DEFAULT_TV_COLS: 4            # Default Columns for TV Layout
+      DEFAULT_TV_CLICK_ACTION: hls  # "hls" / "html" / "vnc"
       # FFMPEG_HWACCEL: nvenc         # GPU encoding: nvenc (NVIDIA), vaapi / qsv (Intel/AMD)
       # LD_LIBRARY_PATH: /usr/lib/wsl/lib  # WSL2 + nvenc only
     ports:

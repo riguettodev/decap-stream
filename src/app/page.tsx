@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef } from "react"
-import { Plus, Download, RefreshCw, Settings, X, LogOut, Tv, Users } from "lucide-react"
+import { Plus, Download, RefreshCw, Settings, X, LogOut, Tv, Users, Play } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { StreamCard } from "@/components/StreamCard"
 import { Toggle } from "@/components/Toggle"
@@ -372,6 +372,19 @@ export default function GalleryPage() {
           {!tvLayoutActive && (
             <button onClick={handleFabRefresh} className={cn(btnBase, "hidden sm:flex")} title="Refresh">
               <RefreshCw className={`w-3.5 h-3.5 ${spinningFab ? "animate-spin" : ""}`} />
+            </button>
+          )}
+          {tvLayoutActive && (
+            <button
+              onClick={() => {
+                const url = `/api/tv-wall?rows=${globalPrefs.tvRows}&cols=${globalPrefs.tvCols}${globalPrefs.pureMode ? "&pure=1" : ""}`
+                if (globalPrefs.newTab) window.open(url, "_blank")
+                else window.location.href = url
+              }}
+              className={cn(btnBase, "hidden sm:flex")}
+              title="Play TV Wall"
+            >
+              <Play className="w-3.5 h-3.5" />
             </button>
           )}
           <button

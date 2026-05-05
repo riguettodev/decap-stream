@@ -48,8 +48,8 @@ function TvCell({ slotIndex, stream, clickAction, pureMode, newTab }: {
     id: slotIndex,
   })
   const style = stream ? { transform: CSS.Transform.toString(transform), transition } : undefined
+  const [thumbSrc, setThumbSrc] = useState<string | null>(null)
   const [thumbError, setThumbError] = useState(false)
-  const [thumbKey, setThumbKey] = useState(0)
   const dragOccurredRef = useRef(false)
 
   useEffect(() => {
@@ -57,10 +57,20 @@ function TvCell({ slotIndex, stream, clickAction, pureMode, newTab }: {
   }, [isDragging])
 
   useEffect(() => {
-    if (!stream) return
-    const interval = setInterval(() => setThumbKey((k) => k + 1), 60000)
-    return () => clearInterval(interval)
-  }, [stream])
+    if (!stream) { setThumbSrc(null); return }
+    let cancelled = false
+    function refresh() {
+      const url = `/api/streams/${stream!.id}/thumb?t=${Date.now()}`
+      const img = new Image()
+      img.onload = () => { if (!cancelled) { setThumbSrc(url); setThumbError(false) } }
+      img.onerror = () => { if (!cancelled && thumbSrc === null) setThumbError(true) }
+      img.src = url
+    }
+    refresh()
+    const interval = setInterval(refresh, 60000)
+    return () => { cancelled = true; clearInterval(interval) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stream?.id])
 
   function navigate(url: string) {
     if (newTab) window.open(url, "_blank")
@@ -101,20 +111,17 @@ function TvCell({ slotIndex, stream, clickAction, pureMode, newTab }: {
       onClick={handleClick}
       className={`relative overflow-hidden bg-[#0a0a0a] border border-[#1a1a1a] cursor-pointer group select-none${isDragging ? " opacity-40 z-50" : ""}${isOver ? " ring-1 ring-white/20" : ""}`}
     >
-      {thumbError ? (
+      {thumbSrc ? (
+        <img
+          src={thumbSrc}
+          className="w-full h-full object-cover"
+          draggable={false}
+        />
+      ) : thumbError ? (
         <div className="absolute inset-0 flex items-center justify-center">
           <Video className="w-8 h-8 text-white/20" />
         </div>
-      ) : (
-        <img
-          key={thumbKey}
-          src={`/api/streams/${stream.id}/thumb?t=${thumbKey}`}
-          className="w-full h-full object-cover"
-          onError={() => setThumbError(true)}
-          onLoad={() => setThumbError(false)}
-          draggable={false}
-        />
-      )}
+      ) : null}
       <div className="absolute bottom-0 left-0 right-0 px-2 pb-2 pointer-events-none">
         <p className="text-white text-sm font-semibold truncate px-2 py-0.5 rounded" style={{ background: "rgba(0,0,0,0.65)" }}>
           {stream.name}

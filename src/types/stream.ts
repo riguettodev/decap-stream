@@ -39,7 +39,7 @@ export interface Stream {
 export type StreamCreate = Omit<Stream, "display" | "vncPort" | "debugPort" | "createdAt" | "updatedAt" | "desiredState" | "order">
 export type StreamUpdate = Partial<StreamCreate>
 
-export type ViewerMode = "hls" | "html" | "vnc"
+export type ViewerMode = "hls" | "html" | "vnc" | "wall"
 export interface ViewerSession {
   ip: string
   streamId: string
