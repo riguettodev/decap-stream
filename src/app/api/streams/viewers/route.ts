@@ -3,6 +3,8 @@ import { getActiveHlsViewers } from "@/lib/viewers"
 import type { ViewerSession, ViewersResponse } from "@/types/stream"
 
 export const WALL_KEY = "__wall"
+// Per-preset wall keys look like `__wall:<presetId>`. Legacy/unknown preset
+// falls back to plain `__wall`.
 
 export async function GET() {
   const now = Date.now()
@@ -12,13 +14,16 @@ export async function GET() {
   ]
 
   const streams: ViewersResponse["streams"] = {}
-  const wallByIp = new Map<string, ViewerSession>()
+  // Dedup wall viewers by (ip, presetId): one person watching a wall counts as
+  // 1 viewer per preset, regardless of how many cells the wall has.
+  const wallByIpPreset = new Map<string, ViewerSession>()
 
   for (const session of all) {
     if (session.mode === "wall") {
-      const existing = wallByIp.get(session.ip)
+      const k = `${session.ip}|${session.presetId ?? ""}`
+      const existing = wallByIpPreset.get(k)
       if (!existing || session.connectedAt < existing.connectedAt) {
-        wallByIp.set(session.ip, session)
+        wallByIpPreset.set(k, session)
       } else if (session.lastSeenAt > existing.lastSeenAt) {
         existing.lastSeenAt = session.lastSeenAt
       }
@@ -37,19 +42,20 @@ export async function GET() {
     })
   }
 
-  if (wallByIp.size > 0) {
-    streams[WALL_KEY] = {
-      count: wallByIp.size,
-      viewers: [...wallByIp.values()].map((s) => ({
-        ip: s.ip,
-        mode: "wall",
-        connectedAt: s.connectedAt,
-        lastSeenAt: s.lastSeenAt,
-        durationMs: now - s.connectedAt,
-      })),
-    }
+  for (const session of wallByIpPreset.values()) {
+    const key = session.presetId ? `${WALL_KEY}:${session.presetId}` : WALL_KEY
+    if (!streams[key]) streams[key] = { count: 0, viewers: [] }
+    streams[key].count++
+    streams[key].viewers.push({
+      ip: session.ip,
+      mode: "wall",
+      presetId: session.presetId,
+      connectedAt: session.connectedAt,
+      lastSeenAt: session.lastSeenAt,
+      durationMs: now - session.connectedAt,
+    })
   }
 
-  const total = (all.length - [...all].filter((s) => s.mode === "wall").length) + wallByIp.size
+  const total = (all.length - [...all].filter((s) => s.mode === "wall").length) + wallByIpPreset.size
   return NextResponse.json({ total, streams } satisfies ViewersResponse)
 }

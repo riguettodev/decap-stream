@@ -24,13 +24,23 @@ export interface Stream {
 
   gpu: boolean
 
+  zoom?: number  // Chromium --force-device-scale-factor; default 1.0; range 0.25–5.0
+
   autoReload?: boolean
   autoReloadInterval?: number  // seconds
+
+  extensions?: {
+    unpacked?: string[]   // slug names of dirs in /app/data/extensions/{streamId}/
+    forcelist?: string[]  // Web Store IDs (32 chars [a-p])
+  }
 
   desiredState: "running" | "stopped"  // persisted desired state, restored on container restart
 
   order: number
   tvPosition?: number | null  // TV Layout: absolute slot index (0-based), null = auto-placed
+
+  tvFill?: boolean                            // TV Wall: true = object-fit cover; false = contain (default false)
+  tvAlign?: "left" | "center" | "right"       // TV Wall: object-position when !tvFill (default "center")
 
   createdAt: string
   updatedAt: string
@@ -44,6 +54,8 @@ export interface ViewerSession {
   ip: string
   streamId: string
   mode: ViewerMode
+  // Only set when mode === "wall" — identifies which TV preset is being viewed.
+  presetId?: string
   connectedAt: number
   lastSeenAt: number
 }
@@ -51,6 +63,7 @@ export interface ViewerSession {
 export interface ViewerEntry {
   ip: string
   mode: ViewerMode
+  presetId?: string
   connectedAt: number
   lastSeenAt: number
   durationMs: number
@@ -76,4 +89,7 @@ export const STREAM_DEFAULTS: Omit<StreamCreate, "id" | "name" | "url"> = {
   gop: 60,
   threads: 0,
   gpu: false,
+  zoom: 1.0,
+  tvFill: false,
+  tvAlign: "center",
 }

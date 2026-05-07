@@ -1,38 +1,41 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { readStreams } from "@/lib/db"
-import type { Stream } from "@/types/stream"
-
-function buildSlots(streams: Stream[], maxCells: number): (string | null)[] {
-  const slots = new Array<string | null>(maxCells).fill(null)
-  const placed = new Set<string>()
-  for (const s of streams) {
-    const pos = s.tvPosition
-    if (typeof pos === "number" && pos >= 0 && pos < maxCells && slots[pos] === null) {
-      slots[pos] = s.id
-      placed.add(s.id)
-    }
-  }
-  let fill = 0
-  for (const s of streams) {
-    if (placed.has(s.id)) continue
-    while (fill < maxCells && slots[fill] !== null) fill++
-    if (fill >= maxCells) break
-    slots[fill] = s.id
-    fill++
-  }
-  return slots
-}
+import { getPreset } from "@/lib/tvPresets"
+import { buildSlotsFromTvPosition, resizeSlots } from "@/lib/tvwall"
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
-  const rows = Math.max(1, Math.min(20, Number(searchParams.get("rows")) || 3))
-  const cols = Math.max(1, Math.min(20, Number(searchParams.get("cols")) || 4))
+  const presetId = searchParams.get("preset")
   const pure = searchParams.get("pure") === "1"
 
   const streams = readStreams()
-  const slots = buildSlots(streams, rows * cols)
+
+  let rows: number
+  let cols: number
+  let slots: (string | null)[]
+
+  if (presetId) {
+    const preset = getPreset(presetId)
+    if (!preset) {
+      return new NextResponse(`Preset "${presetId}" not found`, { status: 404 })
+    }
+    rows = preset.rows
+    cols = preset.cols
+    slots = resizeSlots(preset.slots, rows * cols)
+  } else {
+    rows = Math.max(1, Math.min(20, Number(searchParams.get("rows")) || 3))
+    cols = Math.max(1, Math.min(20, Number(searchParams.get("cols")) || 4))
+    slots = buildSlotsFromTvPosition(streams, rows * cols)
+  }
   const slotsJson = JSON.stringify(slots)
-  const namesJson = JSON.stringify(Object.fromEntries(streams.map((s) => [s.id, s.name])))
+  const metaJson = JSON.stringify(Object.fromEntries(streams.map((s) => [
+    s.id,
+    {
+      name: s.name,
+      fill: s.tvFill ?? false,
+      align: s.tvAlign ?? "center",
+    },
+  ])))
 
   const chromeHtml = pure
     ? ""
@@ -70,7 +73,7 @@ export async function GET(req: NextRequest) {
 html,body{background:#000;overflow:hidden;width:100%;height:100%}
 #grid{display:grid;width:100vw;height:100vh;height:100dvh;grid-template-columns:repeat(${cols},1fr);grid-template-rows:repeat(${rows},1fr);gap:2px;background:#000}
 .cell{position:relative;background:#000;overflow:hidden}
-.cell video{width:100%;height:100%;object-fit:contain;display:block;background:#000}
+.cell video{width:100%;height:100%;display:block;background:#000}
 .cell .label{position:absolute;left:6px;bottom:6px;background:rgba(0,0,0,0.55);color:#fff;font:600 12px/1.2 sans-serif;padding:2px 6px;border-radius:3px;pointer-events:none;opacity:1;transition:opacity .4s;z-index:2}
 body.ui-hidden .cell .label{opacity:0}
 .cell .msg{position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.75);color:#fff;font:600 12px/1.2 sans-serif;padding:4px 10px;border-radius:6px;display:none;z-index:3;white-space:nowrap;max-width:90%;overflow:hidden;text-overflow:ellipsis}
@@ -84,15 +87,22 @@ ${chromeHtml}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.4.12/hls.min.js"></script>
 <script>
 var slots=${slotsJson};
-var names=${namesJson};
+var meta=${metaJson};
 var grid=document.getElementById('grid');
 
 function makePlayer(cell, id){
+  var info=meta[id]||{name:id,fill:false,align:"center"};
   var v=document.createElement('video');
   v.autoplay=true;v.playsInline=true;v.muted=true;
+  v.style.objectFit=info.fill?'cover':'contain';
+  v.style.objectPosition=info.fill
+    ? (info.align==='left' ? '0% 50%'
+    :  info.align==='right' ? '100% 50%'
+    :  '50% 50%')
+    : '50% 50%';
   cell.appendChild(v);
   var label=document.createElement('div');
-  label.className='label';label.textContent=names[id]||id;
+  label.className='label';label.textContent=info.name||id;
   cell.appendChild(label);
   var msg=document.createElement('div');
   msg.className='msg';

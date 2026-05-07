@@ -47,6 +47,11 @@ All processes are managed by Supervisord. The web UI is a Next.js app that contr
 - **Pure mode** — global toggle in Settings to open Play Stream as a raw `.m3u8` link or Run HTML as a minimal `.html` page with no UI; works with native players and TV browsers
 - **Open in new tab** — global toggle in Settings to open any button in a new tab instead of navigating in place; saved in the browser
 - **Chromium auto-reload** — per-stream toggle to reload the Chromium page on a configurable interval via Chrome DevTools Protocol; configured from the card menu and persisted on the server
+- **Per-stream Chromium extensions** — install Chrome Web Store extensions by ID (managed `ExtensionInstallForcelist` policy) or upload unpacked extensions as ZIP from the card menu; applied with a Chromium-only restart
+- **Per-stream Chromium page zoom** — pick one of 17 discrete zoom steps (25 % – 500 %) from the card menu; applied as real page zoom (`Ctrl+`/`Ctrl-`) via `xdotool` without restarting Chromium
+- **TV Wall presets** — save multiple named TV Wall layouts (`rows × cols`, click action, drag-and-drop slots) and switch between them from the header dropdown; `/api/tv-wall?preset=<id>` opens the corresponding wall fullscreen
+- **TV Wall fill / align** — toggle `object-fit: cover` and pick left/center/right alignment per stream; only affects the TV Wall, single-stream players keep `contain`
+- **Right-click in TV Layout** — every cell with a stream exposes the full card menu on right-click (Edit, Restart, Recreate, Copy RTMP, Refresh thumb, Extensions, Zoom, ...)
 - **Player client-side auto-reload** — global toggle in Settings to reload the HLS player itself on a configurable interval (in minutes)
 - **Mobile-friendly UI** — responsive layout for phones (< 640 px): Add and Refresh become floating action buttons in the bottom-right corner, cards fill the screen width automatically, no horizontal scroll; installable as a PWA with separate light/dark home-screen icons
 
@@ -82,6 +87,10 @@ services:
       DEFAULT_OPEN_NEW_TAB: false   # Open player buttons in a new tab
       DEFAULT_RELOAD_CLIENT: false  # Auto-reload the client player page
       DEFAULT_RELOAD_CLIENT_TIME: 2 # Client auto-reload interval in minutes
+      DEFAULT_TV_LAYOUT: false      # Activate TV Layout by default
+      DEFAULT_TV_ROWS: 3            # Default Rows for TV Layout
+      DEFAULT_TV_COLS: 4            # Default Columns for TV Layout
+      DEFAULT_TV_CLICK_ACTION: hls  # "hls" / "html" / "vnc"
       # FFMPEG_HWACCEL: nvenc         # GPU encoding: nvenc (NVIDIA), vaapi / qsv (Intel/AMD)
       # LD_LIBRARY_PATH: /usr/lib/wsl/lib  # WSL2 + nvenc only
     ports:
@@ -152,6 +161,11 @@ Each stream gets a slug ID you define (e.g. `grafana-prod`):
 | `gpu` | `false` | Enable Chromium GPU acceleration (requires host GPU + container access) |
 | `autoReload` | `false` | Reload the Chromium page on a fixed interval via CDP; toggled from the card menu |
 | `autoReloadInterval` | `3600` | Interval in seconds between automatic page reloads |
+| `zoom` | `1.0` | Chromium page zoom factor (snapped to one of 17 discrete steps from `0.25` to `5.0`) |
+| `tvFill` | `false` | TV Wall: render this stream with `object-fit: cover` (fill cell, crop overflow) |
+| `tvAlign` | `center` | TV Wall: alignment when `tvFill` is off (`left` / `center` / `right`) |
+| `extensions.unpacked` | `[]` | Chromium unpacked extensions (slugs of folders uploaded via ZIP) |
+| `extensions.forcelist` | `[]` | Chrome Web Store extension IDs installed via managed `ExtensionInstallForcelist` policy |
 
 ## Architecture
 
@@ -166,6 +180,7 @@ Each stream gets a slug ID you define (e.g. `grafana-prod`):
 │                                   ├── xvfb       (display)  │
 │                                   ├── chromium   (browser)  │
 │                                   ├── autologin  (CDP)      │
+│                                   ├── applyzoom  (xdotool)  │
 │                                   ├── autoreload (CDP)      │
 │                                   ├── x11vnc     (VNC)      │
 │                                   └── ffmpeg     (encode)   │

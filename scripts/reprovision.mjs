@@ -10,7 +10,54 @@ const STREAMS_FILE = path.join(DATA_DIR, 'streams', 'streams.json')
 const STREAMS_DIR = path.join(DATA_DIR, 'streams')
 const VNC_TOKENS_DIR = path.join(DATA_DIR, 'vnc-tokens')
 const LOGS_DIR = path.join(DATA_DIR, 'logs')
+const EXT_DIR = path.join(DATA_DIR, 'extensions')
+const POLICIES_DIR = process.env.POLICIES_DIR ?? '/etc/chromium/policies/managed'
 const CONF_TPL = '/opt/scripts/stream.template.conf'
+
+const FORCELIST_ID_RE = /^[a-p]{32}$/
+const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,62}$/
+
+function effectiveZoom(stream) {
+  const z = stream.zoom
+  if (z == null || !Number.isFinite(z) || z <= 0) return 1
+  return Math.min(5, Math.max(0.25, z))
+}
+
+function buildExtensionsFlags(stream) {
+  const ext = stream.extensions ?? {}
+  const slugs = (ext.unpacked ?? []).filter((s) => SLUG_RE.test(s))
+  const forcelist = (ext.forcelist ?? []).filter((id) => FORCELIST_ID_RE.test(id))
+  if (slugs.length === 0 && forcelist.length === 0) return '    --disable-extensions \\\n'
+  if (slugs.length === 0) return ''
+  const paths = slugs.map((s) => path.join(EXT_DIR, stream.id, s)).join(',')
+  return `    --load-extension=${paths} \\\n`
+}
+
+function buildBgNetFlag(stream) {
+  const forcelist = (stream.extensions?.forcelist ?? []).filter((id) => FORCELIST_ID_RE.test(id))
+  if (forcelist.length > 0) return ''
+  return '    --disable-background-networking \\\n'
+}
+
+function writeForcelistPolicy(stream) {
+  const ids = (stream.extensions?.forcelist ?? []).filter((id) => FORCELIST_ID_RE.test(id))
+  const file = path.join(POLICIES_DIR, `forcelist-${stream.id}.json`)
+  try {
+    if (ids.length === 0) {
+      if (fs.existsSync(file)) fs.unlinkSync(file)
+      return
+    }
+    fs.mkdirSync(POLICIES_DIR, { recursive: true })
+    const body = {
+      ExtensionInstallForcelist: ids.map(
+        (id) => `${id};https://clients2.google.com/service/update2/crx`
+      ),
+    }
+    fs.writeFileSync(file, JSON.stringify(body, null, 2), 'utf-8')
+  } catch (err) {
+    console.error(`[reprovision] writeForcelistPolicy failed for ${stream.id}:`, err.message)
+  }
+}
 
 if (!fs.existsSync(STREAMS_FILE) || !fs.existsSync(CONF_TPL)) process.exit(0)
 
@@ -113,10 +160,15 @@ for (const stream of streams) {
     USER:         stream.user ?? '',
     PASS:         stream.pass ?? '',
     GPU_FLAGS:           stream.gpu ? '' : '    --disable-gpu \\\n',
+    ZOOM_FACTOR:         parseFloat(effectiveZoom(stream).toFixed(4)).toString(),
     ENCODER_FLAGS:       buildEncoderFlags(stream),
     AUTO_RELOAD:         stream.autoReload ? 'true' : 'false',
     AUTO_RELOAD_INTERVAL: stream.autoReloadInterval ?? 3600,
+    EXTENSIONS_FLAGS:    buildExtensionsFlags(stream),
+    BG_NET_FLAG:         buildBgNetFlag(stream),
   }
+
+  writeForcelistPolicy(stream)
 
   fs.writeFileSync(path.join(dir, 'stream.conf'), render(confTpl, vars), 'utf-8')
   fs.writeFileSync(

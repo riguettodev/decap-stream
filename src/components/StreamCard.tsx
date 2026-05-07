@@ -1,9 +1,10 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
-import { MoreHorizontal, Play, Globe, Monitor, Pencil, RotateCcw, Square, Trash2, Circle, Copy, Check, Video, ImageUp, GripVertical, Wrench, RefreshCw } from "lucide-react"
+import { useState, useEffect, useRef, useLayoutEffect } from "react"
+import { MoreHorizontal, Play, Globe, Monitor, Circle, Video, GripVertical } from "lucide-react"
+import { ExtensionsModal } from "@/components/ExtensionsModal"
+import { StreamMenuContent } from "@/components/StreamMenu"
 import { cn } from "@/lib/utils"
-import { Toggle } from "@/components/Toggle"
 import type { Stream } from "@/types/stream"
 import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities"
 import type { DraggableAttributes } from "@dnd-kit/core"
@@ -15,6 +16,7 @@ interface Props {
   cardSize?: "mini" | "sm" | "md" | "lg"
   onRefresh: () => void
   onLocalStatus: (id: string, s: string | null) => void
+  onStreamUpdate?: (id: string, patch: Partial<Stream>) => void
   dragHandleListeners?: SyntheticListenerMap
   dragHandleAttributes?: DraggableAttributes
   isDragging?: boolean
@@ -43,22 +45,6 @@ function StatusBadge({ status, localStatus, cardSize = "md" }: { status?: Record
   )
 }
 
-function copyToClipboard(text: string) {
-  if (navigator.clipboard && window.isSecureContext) {
-    return navigator.clipboard.writeText(text)
-  }
-  const el = document.createElement("textarea")
-  el.value = text
-  el.style.position = "fixed"
-  el.style.opacity = "0"
-  document.body.appendChild(el)
-  el.focus()
-  el.select()
-  document.execCommand("copy")
-  document.body.removeChild(el)
-  return Promise.resolve()
-}
-
 const CARD_WIDTHS = { mini: "sm:max-w-[200px]", sm: "sm:max-w-[240px]", md: "sm:max-w-[300px]", lg: "sm:max-w-[380px]" }
 
 const SCALE = {
@@ -80,60 +66,69 @@ function ConfirmDeleteModal({ name, onConfirm, onCancel }: { name: string; onCon
           </p>
         </div>
         <div className="flex gap-2 justify-end">
-          <button
-            onClick={onCancel}
-            className="px-4 py-1.5 rounded border border-border text-sm hover:bg-[#2a2a2a] transition-colors cursor-pointer"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            className="px-4 py-1.5 rounded border border-destructive bg-destructive/10 text-destructive text-sm hover:bg-destructive hover:text-white transition-colors cursor-pointer"
-          >
-            Delete
-          </button>
+          <button onClick={onCancel} className="px-4 py-1.5 rounded border border-border text-sm hover:bg-[#2a2a2a] transition-colors cursor-pointer">Cancel</button>
+          <button onClick={onConfirm} className="px-4 py-1.5 rounded border border-destructive bg-destructive/10 text-destructive text-sm hover:bg-destructive hover:text-white transition-colors cursor-pointer">Delete</button>
         </div>
       </div>
     </div>
   )
 }
 
-export function StreamCard({ stream, status, localStatus, cardSize = "md", onRefresh, onLocalStatus, dragHandleListeners, dragHandleAttributes, isDragging, globalPrefs }: Props) {
+export function StreamCard({ stream, status, localStatus, cardSize = "md", onRefresh, onLocalStatus, onStreamUpdate, dragHandleListeners, dragHandleAttributes, isDragging, globalPrefs }: Props) {
   const sc = SCALE[cardSize]
   const [menuOpen, setMenuOpen] = useState(false)
-  const [copied, setCopied] = useState(false)
   const [thumbKey, setThumbKey] = useState(0)
   const [thumbError, setThumbError] = useState(false)
-  const [thumbCapturing, setThumbCapturing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [autoReload, setAutoReload] = useState(stream.autoReload ?? false)
-  const [autoReloadMins, setAutoReloadMins] = useState(Math.round((stream.autoReloadInterval ?? 3600) / 60))
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [extOpen, setExtOpen] = useState(false)
+  const menuButtonRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(null)
+
+  // When the menu opens, position it under the 3-dot button (right-aligned),
+  // then clamp to the viewport — flipping above the button if there isn't
+  // enough space below (covers cards on the second row of the kanban).
+  useLayoutEffect(() => {
+    if (!menuOpen) { setMenuPos(null); return }
+    const btn = menuButtonRef.current
+    const el = menuRef.current
+    if (!btn || !el) return
+    function reposition() {
+      if (!btn || !el) return
+      const btnRect = btn.getBoundingClientRect()
+      const menuRect = el.getBoundingClientRect()
+      const gap = 4
+      const margin = 8
+      let left = btnRect.right - menuRect.width
+      let top = btnRect.bottom + gap
+      if (top + menuRect.height > window.innerHeight - margin) {
+        const flipped = btnRect.top - gap - menuRect.height
+        top = flipped >= margin ? flipped : Math.max(margin, window.innerHeight - menuRect.height - margin)
+      }
+      left = Math.max(margin, Math.min(left, window.innerWidth - menuRect.width - margin))
+      setMenuPos({ left, top })
+    }
+    reposition()
+    const ro = new ResizeObserver(reposition)
+    ro.observe(el)
+    window.addEventListener("resize", reposition)
+    window.addEventListener("scroll", reposition, true)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener("resize", reposition)
+      window.removeEventListener("scroll", reposition, true)
+    }
+  }, [menuOpen])
 
   useEffect(() => {
-    if (!thumbError || thumbCapturing) return
+    if (!thumbError) return
     const interval = setInterval(() => setThumbKey((k) => k + 1), 15000)
     return () => clearInterval(interval)
-  }, [thumbError, thumbCapturing])
-
-  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current) }, [])
+  }, [thumbError])
 
   function navigate(url: string) {
     if (globalPrefs.newTab) window.open(url, "_blank")
     else window.location.href = url
-  }
-
-  async function action(act: string, optimisticStatus: string) {
-    onLocalStatus(stream.id, optimisticStatus)
-    setMenuOpen(false)
-    await fetch(`/api/streams/${stream.id}/${act}`, { method: "POST" })
-    onRefresh()
-    setTimeout(() => onLocalStatus(stream.id, null), 15000)
-  }
-
-  async function remove() {
-    setMenuOpen(false)
-    setConfirmDelete(true)
   }
 
   async function confirmRemove() {
@@ -158,190 +153,108 @@ export function StreamCard({ stream, status, localStatus, cardSize = "md", onRef
       : `/static/${stream.id}`)
   }
 
-  function copyRTMP() {
-    const url = `rtmp://${window.location.hostname}:1935/live/${stream.id}`
-    copyToClipboard(url).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
-  }
-
-  async function toggleAutoReload() {
-    const next = !autoReload
-    setAutoReload(next)
-    await fetch(`/api/streams/${stream.id}/autoreload`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled: next, interval: autoReloadMins * 60 }),
-    })
-  }
-
-  async function saveAutoReloadInterval(mins: number) {
-    await fetch(`/api/streams/${stream.id}/autoreload`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled: autoReload, interval: mins * 60 }),
-    })
-  }
-
-  async function refreshThumb() {
-    setMenuOpen(false)
+  // Force thumbnail re-fetch (used after the shared menu refreshes thumb / restarts stream).
+  function bumpThumbAndRefresh() {
+    setThumbKey((k) => k + 1)
     setThumbError(false)
-    setThumbCapturing(true)
-    if (pollRef.current) clearInterval(pollRef.current)
-    await fetch(`/api/streams/${stream.id}/thumb`, { method: "POST" })
-    const deadline = Date.now() + 30000
-    pollRef.current = setInterval(async () => {
-      const res = await fetch(`/api/streams/${stream.id}/thumb?t=${Date.now()}`, { cache: "no-store" })
-      if (res.ok) {
-        clearInterval(pollRef.current!); pollRef.current = null
-        setThumbKey((k) => k + 1)
-        setThumbCapturing(false)
-      } else if (Date.now() >= deadline) {
-        clearInterval(pollRef.current!); pollRef.current = null
-        setThumbCapturing(false)
-      }
-    }, 2000)
+    onRefresh()
   }
 
   const playBtn = `w-full flex items-center rounded border border-border bg-muted hover:bg-[#2a2a2a] active:bg-[#333] transition-colors cursor-pointer ${sc.btn}`
-  const menuItem = "w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-[#2a2a2a] active:bg-[#333] transition-colors cursor-pointer"
 
   return (
     <>
-    {confirmDelete && (
-      <ConfirmDeleteModal
-        name={stream.name}
-        onConfirm={confirmRemove}
-        onCancel={() => setConfirmDelete(false)}
-      />
-    )}
-    <div className={cn("relative rounded-lg border border-border bg-card flex flex-col w-full transition-opacity", sc.card, CARD_WIDTHS[cardSize], isDragging && "opacity-40")}>
-
-      {/* Drag handle strip */}
-      {(dragHandleListeners || dragHandleAttributes) && (
-        <div
-          {...dragHandleListeners}
-          {...dragHandleAttributes}
-          className="-mx-3 -mt-3 h-7 flex items-center justify-center rounded-t-lg cursor-grab active:cursor-grabbing hover:bg-white/[0.05] transition-colors border-b border-border/40 group"
-        >
-          <GripVertical className="w-4 h-4 text-muted-foreground/30 group-hover:text-muted-foreground/65 transition-colors" />
-        </div>
+      {confirmDelete && (
+        <ConfirmDeleteModal
+          name={stream.name}
+          onConfirm={confirmRemove}
+          onCancel={() => setConfirmDelete(false)}
+        />
       )}
+      {extOpen && (
+        <ExtensionsModal
+          streamId={stream.id}
+          streamName={stream.name}
+          onClose={() => setExtOpen(false)}
+        />
+      )}
+      <div className={cn("relative rounded-lg border border-border bg-card flex flex-col w-full transition-opacity", sc.card, CARD_WIDTHS[cardSize], isDragging && "opacity-40")}>
 
-      {/* Thumbnail */}
-      <div className="w-full aspect-video rounded overflow-hidden bg-muted flex items-center justify-center relative">
-        {thumbCapturing ? (
-          <span className="text-xs text-muted-foreground animate-pulse">Capturing...</span>
-        ) : (
-          <>
-            {thumbError && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <Video className="w-5 h-5 text-muted-foreground/25" />
-              </div>
-            )}
-            <img
-              key={thumbKey}
-              src={`/api/streams/${stream.id}/thumb?t=${thumbKey}`}
-              className={cn("w-full h-full object-cover", thumbError && "invisible")}
-              onError={() => setThumbError(true)}
-              onLoad={() => setThumbError(false)}
-            />
-          </>
+        {/* Drag handle strip */}
+        {(dragHandleListeners || dragHandleAttributes) && (
+          <div
+            {...dragHandleListeners}
+            {...dragHandleAttributes}
+            className="-mx-3 -mt-3 h-7 flex items-center justify-center rounded-t-lg cursor-grab active:cursor-grabbing hover:bg-white/[0.05] transition-colors border-b border-border/40 group"
+          >
+            <GripVertical className="w-4 h-4 text-muted-foreground/30 group-hover:text-muted-foreground/65 transition-colors" />
+          </div>
         )}
-      </div>
 
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className={cn("font-semibold truncate", sc.name)}>{stream.name}</p>
-          <p className={cn("text-muted-foreground font-mono truncate", sc.meta)}>{stream.id}</p>
+        {/* Thumbnail */}
+        <div className="w-full aspect-video rounded overflow-hidden bg-muted flex items-center justify-center relative">
+          {thumbError && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Video className="w-5 h-5 text-muted-foreground/25" />
+            </div>
+          )}
+          <img
+            key={thumbKey}
+            src={`/api/streams/${stream.id}/thumb?t=${thumbKey}`}
+            className={cn("w-full h-full object-cover", thumbError && "invisible")}
+            onError={() => setThumbError(true)}
+            onLoad={() => setThumbError(false)}
+          />
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          <StatusBadge status={status} localStatus={localStatus} cardSize={cardSize} />
-          <div className="relative">
-            <button onClick={() => setMenuOpen((v) => !v)} className="p-1 rounded hover:bg-[#2a2a2a] transition-colors cursor-pointer">
-              <MoreHorizontal className={sc.menuIcon} />
-            </button>
-            {menuOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
-                <div className="absolute top-full right-0 mt-1 z-50 min-w-[180px] rounded-lg border border-border shadow-2xl overflow-hidden"
-                     style={{ background: "#1c1c1c" }}>
-                  <button onClick={() => { setMenuOpen(false); window.location.href = `/streams/${stream.id}/edit` }} className={menuItem}>
-                    <Pencil className="w-3.5 h-3.5" /> Edit
-                  </button>
-                  <button onClick={() => action("restart", "restarting")} className={menuItem}>
-                    <RotateCcw className="w-3.5 h-3.5" /> Restart
-                  </button>
-                  <button onClick={() => action("recreate", "restarting")} className={menuItem}>
-                    <Wrench className="w-3.5 h-3.5" /> Recreate
-                  </button>
-                  {status?.ffmpeg === "RUNNING" || localStatus === "restarting" ? (
-                    <button onClick={() => action("stop", "stopping")} className={menuItem}>
-                      <Square className="w-3.5 h-3.5" /> Stop
-                    </button>
-                  ) : (
-                    <button onClick={() => action("start", "starting")} className={menuItem}>
-                      <Play className="w-3.5 h-3.5" /> Start
-                    </button>
-                  )}
-                  <button onClick={() => { setMenuOpen(false); copyRTMP() }} className={menuItem}>
-                    {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
-                    {copied ? "Copied!" : "Copy RTMP"}
-                  </button>
-                  <div className="border-t border-border" />
-                  <button onClick={refreshThumb} disabled={thumbCapturing} className={cn(menuItem, thumbCapturing && "opacity-50")}>
-                    <ImageUp className="w-3.5 h-3.5" />
-                    {thumbCapturing ? "Capturing..." : "Refresh thumbnail"}
-                  </button>
-                  <div className="border-t border-border" />
-                  <div className="px-3 py-2 flex flex-col gap-2">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-sm flex items-center gap-2">
-                        <RefreshCw className="w-3.5 h-3.5 shrink-0" /> Auto-reload
-                      </span>
-                      <button
-                        onClick={toggleAutoReload}
-                        className={cn("relative w-9 h-5 rounded-full transition-colors shrink-0 overflow-hidden", autoReload ? "bg-blue-600" : "bg-zinc-600")}
-                      >
-                        <span className={cn("absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all", autoReload ? "left-[18px]" : "left-0.5")} />
-                      </button>
-                    </div>
-                    {autoReload && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground whitespace-nowrap">Every</span>
-                        <input
-                          type="number"
-                          min={1}
-                          value={autoReloadMins}
-                          onChange={e => setAutoReloadMins(Math.max(1, Number(e.target.value) || 1))}
-                          onBlur={() => saveAutoReloadInterval(autoReloadMins)}
-                          onKeyDown={e => { if (e.key === "Enter") saveAutoReloadInterval(autoReloadMins) }}
-                          className="w-16 text-xs bg-[#2a2a2a] border border-border rounded px-2 py-0.5 text-center"
-                        />
-                        <span className="text-xs text-muted-foreground whitespace-nowrap">min</span>
-                      </div>
-                    )}
+
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className={cn("font-semibold truncate", sc.name)}>{stream.name}</p>
+            <p className={cn("text-muted-foreground font-mono truncate", sc.meta)}>{stream.id}</p>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <StatusBadge status={status} localStatus={localStatus} cardSize={cardSize} />
+            <div className="relative">
+              <button ref={menuButtonRef} onClick={() => setMenuOpen((v) => !v)} className="p-1 rounded hover:bg-[#2a2a2a] transition-colors cursor-pointer">
+                <MoreHorizontal className={sc.menuIcon} />
+              </button>
+              {menuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+                  <div ref={menuRef}
+                       className="fixed z-50 min-w-[200px] rounded-lg border border-border shadow-2xl overflow-hidden"
+                       style={{
+                         background: "#1c1c1c",
+                         left: menuPos?.left ?? -9999,
+                         top: menuPos?.top ?? -9999,
+                         visibility: menuPos ? "visible" : "hidden",
+                       }}>
+                    <StreamMenuContent
+                      stream={stream}
+                      status={status}
+                      localStatus={localStatus}
+                      onClose={() => setMenuOpen(false)}
+                      onRefresh={bumpThumbAndRefresh}
+                      onLocalStatus={onLocalStatus}
+                      onStreamUpdate={onStreamUpdate}
+                      onOpenExtensions={() => setExtOpen(true)}
+                      onDelete={() => setConfirmDelete(true)}
+                    />
                   </div>
-                  <div className="border-t border-border" />
-                  <button onClick={remove} className={cn(menuItem, "text-destructive")}>
-                    <Trash2 className="w-3.5 h-3.5" /> Delete
-                  </button>
-                </div>
-              </>
-            )}
+                </>
+              )}
+            </div>
           </div>
         </div>
-      </div>
 
-      <p className={cn("text-muted-foreground truncate", sc.meta)} title={stream.url}>{stream.url}</p>
+        <p className={cn("text-muted-foreground truncate", sc.meta)} title={stream.url}>{stream.url}</p>
 
-      <div className="flex flex-col gap-1.5">
-        <button onClick={handlePlayStream} className={playBtn}><Play    className={cn("shrink-0", sc.btnIcon)} /> Play Stream</button>
-        <button onClick={handleRunHtml}   className={playBtn}><Globe   className={cn("shrink-0", sc.btnIcon)} /> Run HTML</button>
-        <button onClick={openVNC}         className={playBtn}><Monitor className={cn("shrink-0", sc.btnIcon)} /> Open VNC</button>
+        <div className="flex flex-col gap-1.5">
+          <button onClick={handlePlayStream} className={playBtn}><Play    className={cn("shrink-0", sc.btnIcon)} /> Play Stream</button>
+          <button onClick={handleRunHtml}   className={playBtn}><Globe   className={cn("shrink-0", sc.btnIcon)} /> Run HTML</button>
+          <button onClick={openVNC}         className={playBtn}><Monitor className={cn("shrink-0", sc.btnIcon)} /> Open VNC</button>
+        </div>
       </div>
-    </div>
     </>
   )
 }

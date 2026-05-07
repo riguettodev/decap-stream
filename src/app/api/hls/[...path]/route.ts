@@ -13,7 +13,13 @@ export async function GET(req: NextRequest, { params }: Ctx) {
       : referer.includes("/static/") ? "html"
       : "hls"
     const streamId = path[0] === "live" ? path[1] : path[0]
-    if (streamId) touchHlsViewer(streamId, ip, mode)
+    // For wall viewers, pull the preset id out of the tv-wall URL so we can
+    // group viewers per-preset instead of collapsing everything under "TV Wall".
+    let presetId: string | undefined
+    if (mode === "wall") {
+      try { presetId = new URL(referer).searchParams.get("preset") ?? undefined } catch {}
+    }
+    if (streamId) touchHlsViewer(streamId, ip, mode, presetId)
   }
 
   const upstream = `http://localhost:8888/${path.join("/")}`

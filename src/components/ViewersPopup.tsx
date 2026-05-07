@@ -1,6 +1,7 @@
 import { X, Play, Globe, Monitor, LayoutGrid } from "lucide-react"
 import type { ViewerMode, ViewersResponse } from "@/types/stream"
 import type { Stream } from "@/types/stream"
+import type { TvPreset } from "@/types/tvPreset"
 
 function formatDuration(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000)
@@ -27,18 +28,33 @@ const modeLabel: Record<ViewerMode, string> = {
 
 const WALL_KEY = "__wall"
 
+// Resolves the display label for a streams[] key. Per-preset wall entries
+// arrive as `__wall:<presetId>` from the API; we look up the preset name
+// to render "TV Wall — Default" instead of a raw id.
+function labelFor(key: string, streamMap: Record<string, string>, presetMap: Record<string, string>): string {
+  if (key === WALL_KEY) return "TV Wall"
+  if (key.startsWith(WALL_KEY + ":")) {
+    const presetId = key.slice(WALL_KEY.length + 1)
+    return `TV Wall — ${presetMap[presetId] ?? presetId}`
+  }
+  return streamMap[key] ?? key
+}
+
 export function ViewersPopup({
   data,
   streams,
+  presets,
   pureMode,
   onClose,
 }: {
   data: ViewersResponse | null
   streams: Stream[]
+  presets: TvPreset[]
   pureMode: boolean
   onClose: () => void
 }) {
   const streamMap = Object.fromEntries(streams.map((s) => [s.id, s.name]))
+  const presetMap = Object.fromEntries(presets.map((p) => [p.id, p.name]))
 
   return (
     <>
@@ -71,7 +87,7 @@ export function ViewersPopup({
               {Object.entries(data.streams).map(([streamId, { count, viewers }]) => (
                 <div key={streamId} className="px-4 py-3 flex flex-col gap-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium truncate">{streamId === WALL_KEY ? "TV Wall" : (streamMap[streamId] ?? streamId)}</span>
+                    <span className="text-xs font-medium truncate">{labelFor(streamId, streamMap, presetMap)}</span>
                     <span className="text-[10px] text-muted-foreground bg-muted rounded-full px-1.5 py-0.5 shrink-0 ml-2">
                       {count}
                     </span>

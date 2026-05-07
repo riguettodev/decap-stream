@@ -1,76 +1,73 @@
 "use client"
 
 import { useRef, useState, useEffect, useCallback } from "react"
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core"
-import type { DragEndEvent } from "@dnd-kit/core"
-import { SortableContext, useSortable, rectSortingStrategy } from "@dnd-kit/sortable"
+import {
+  DndContext,
+  DragOverlay,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  useDraggable,
+  useDroppable,
+} from "@dnd-kit/core"
+import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core"
+import { SortableContext, useSortable } from "@dnd-kit/sortable"
+
+// No-op sorting strategy: we do explicit swap on drop, so we don't want
+// neighbor slots to translate ("make room") during a drag.
+const noopStrategy = () => null
 import { CSS } from "@dnd-kit/utilities"
-import { Video } from "lucide-react"
+import { Video, Trash2 } from "lucide-react"
+import { StreamContextMenu } from "@/components/StreamMenu"
 import type { Stream } from "@/types/stream"
+import type { TvPreset, TvClickAction } from "@/types/tvPreset"
 
-export type TvClickAction = "hls" | "html" | "vnc"
+export type { TvClickAction } from "@/types/tvPreset"
 
-// Build a slots array (length = maxCells) from streams' tvPosition field.
-// Streams with a valid tvPosition are placed at that index.
-// Streams without (or with out-of-range) tvPosition are auto-filled into the first empty slots.
-function buildSlots(streams: Stream[], maxCells: number): (string | null)[] {
-  const slots = new Array<string | null>(maxCells).fill(null)
-  const placed = new Set<string>()
+// Drag id conventions:
+//   slot:<index>     — sortable slot in the grid (numeric-only ids confused dnd-kit when mixed with strings, so we prefix)
+//   sb:<streamId>    — draggable item in the sidebar
+//   trash            — droppable trash zone in the sidebar header
 
-  for (const stream of streams) {
-    const pos = stream.tvPosition
-    if (typeof pos === "number" && pos >= 0 && pos < maxCells && slots[pos] === null) {
-      slots[pos] = stream.id
-      placed.add(stream.id)
-    }
-  }
-
-  let fillIdx = 0
-  for (const stream of streams) {
-    if (placed.has(stream.id)) continue
-    while (fillIdx < maxCells && slots[fillIdx] !== null) fillIdx++
-    if (fillIdx >= maxCells) break
-    slots[fillIdx] = stream.id
-    fillIdx++
-  }
-
-  return slots
-}
-
-function TvCell({ slotIndex, stream, clickAction, pureMode, newTab }: {
-  slotIndex: number
-  stream: Stream | null
-  clickAction: TvClickAction
-  pureMode: boolean
-  newTab: boolean
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({
-    id: slotIndex,
-  })
-  const style = stream ? { transform: CSS.Transform.toString(transform), transition } : undefined
+function useStreamThumb(streamId: string | null | undefined) {
   const [thumbSrc, setThumbSrc] = useState<string | null>(null)
   const [thumbError, setThumbError] = useState(false)
-  const dragOccurredRef = useRef(false)
-
   useEffect(() => {
-    if (isDragging) dragOccurredRef.current = true
-  }, [isDragging])
-
-  useEffect(() => {
-    if (!stream) { setThumbSrc(null); return }
+    if (!streamId) { setThumbSrc(null); setThumbError(false); return }
     let cancelled = false
     function refresh() {
-      const url = `/api/streams/${stream!.id}/thumb?t=${Date.now()}`
+      const url = `/api/streams/${streamId}/thumb?t=${Date.now()}`
       const img = new Image()
       img.onload = () => { if (!cancelled) { setThumbSrc(url); setThumbError(false) } }
-      img.onerror = () => { if (!cancelled && thumbSrc === null) setThumbError(true) }
+      img.onerror = () => { if (!cancelled) setThumbError((prev) => prev || true) }
       img.src = url
     }
     refresh()
     const interval = setInterval(refresh, 60000)
     return () => { cancelled = true; clearInterval(interval) }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stream?.id])
+  }, [streamId])
+  return { thumbSrc, thumbError }
+}
+
+function TvCell({ slotIndex, stream, clickAction, pureMode, newTab, onContextMenu }: {
+  slotIndex: number
+  stream: Stream | null
+  clickAction: TvClickAction
+  pureMode: boolean
+  newTab: boolean
+  onContextMenu?: (e: React.MouseEvent, stream: Stream) => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({
+    id: `slot:${slotIndex}`,
+  })
+  const style = stream ? { transform: CSS.Transform.toString(transform), transition } : undefined
+  const { thumbSrc, thumbError } = useStreamThumb(stream?.id)
+  const dragOccurredRef = useRef(false)
+
+  useEffect(() => {
+    if (isDragging) dragOccurredRef.current = true
+  }, [isDragging])
 
   function navigate(url: string) {
     if (newTab) window.open(url, "_blank")
@@ -109,6 +106,7 @@ function TvCell({ slotIndex, stream, clickAction, pureMode, newTab }: {
       {...attributes}
       {...listeners}
       onClick={handleClick}
+      onContextMenu={(e) => { if (stream && onContextMenu) { e.preventDefault(); onContextMenu(e, stream) } }}
       className={`relative overflow-hidden bg-[#0a0a0a] border border-[#1a1a1a] cursor-pointer group select-none${isDragging ? " opacity-40 z-50" : ""}${isOver ? " ring-1 ring-white/20" : ""}`}
     >
       {thumbSrc ? (
@@ -132,86 +130,255 @@ function TvCell({ slotIndex, stream, clickAction, pureMode, newTab }: {
   )
 }
 
-async function saveSlots(slots: (string | null)[]): Promise<void> {
-  await fetch("/api/streams/tv-slots", {
+function SidebarItemPreview({ stream }: { stream: Stream }) {
+  const { thumbSrc, thumbError } = useStreamThumb(stream.id)
+  return (
+    <div
+      className="relative w-[220px] aspect-video bg-[#0a0a0a] border border-white/30 rounded overflow-hidden select-none shadow-2xl"
+      title={stream.name}
+    >
+      {thumbSrc ? (
+        <img src={thumbSrc} className="w-full h-full object-cover" draggable={false} />
+      ) : thumbError ? (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Video className="w-6 h-6 text-white/20" />
+        </div>
+      ) : null}
+      <div className="absolute bottom-0 left-0 right-0 px-1.5 pb-1 pointer-events-none">
+        <p className="text-white text-xs truncate px-1.5 py-0.5 rounded" style={{ background: "rgba(0,0,0,0.65)" }}>
+          {stream.name}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function SidebarItem({ stream }: { stream: Stream }) {
+  // Don't apply transform from useDraggable — the DragOverlay (rendered in a portal at body)
+  // shows the floating preview, so the original stays in place. Hiding via opacity-0 keeps
+  // the slot reserved in the sidebar layout.
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `sb:${stream.id}`,
+  })
+  const { thumbSrc, thumbError } = useStreamThumb(stream.id)
+  return (
+    <div
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+      className={`relative w-full aspect-video bg-[#0a0a0a] border border-[#1a1a1a] rounded overflow-hidden cursor-grab active:cursor-grabbing select-none ${isDragging ? "opacity-0" : ""}`}
+      title={stream.name}
+    >
+      {thumbSrc ? (
+        <img src={thumbSrc} className="w-full h-full object-cover" draggable={false} />
+      ) : thumbError ? (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Video className="w-6 h-6 text-white/20" />
+        </div>
+      ) : null}
+      <div className="absolute bottom-0 left-0 right-0 px-1.5 pb-1 pointer-events-none">
+        <p className="text-white text-xs truncate px-1.5 py-0.5 rounded" style={{ background: "rgba(0,0,0,0.65)" }}>
+          {stream.name}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function TrashZone() {
+  const { setNodeRef, isOver } = useDroppable({ id: "trash" })
+  return (
+    <div
+      ref={setNodeRef}
+      className={`flex items-center justify-center gap-2 text-xs py-2 px-2 rounded border border-dashed transition-colors ${
+        isOver ? "border-red-400 text-red-300 bg-red-500/10" : "border-[#2a2a2a] text-muted-foreground"
+      }`}
+    >
+      <Trash2 className="w-3.5 h-3.5" />
+      <span>Drop to remove</span>
+    </div>
+  )
+}
+
+async function saveSlots(presetId: string, slots: (string | null)[]): Promise<void> {
+  await fetch(`/api/tv-presets/${presetId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ slots }),
   })
 }
 
-export function TvLayoutGrid({ streams, rows, cols, clickAction, pureMode, newTab, onPositionsSaved }: {
+export function TvLayoutGrid({ streams, preset, pureMode, newTab, onSlotsSaved, statuses, localStatuses, onRefresh, onLocalStatus, onStreamUpdate }: {
   streams: Stream[]
-  rows: number
-  cols: number
-  clickAction: TvClickAction
+  preset: TvPreset
   pureMode: boolean
   newTab: boolean
-  onPositionsSaved?: () => void
+  onSlotsSaved?: () => void
+  statuses?: Record<string, Record<string, string>>
+  localStatuses?: Record<string, string | null>
+  onRefresh?: () => void
+  onLocalStatus?: (id: string, s: string | null) => void
+  onStreamUpdate?: (id: string, patch: Partial<Stream>) => void
 }) {
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; stream: Stream } | null>(null)
+  const { rows, cols, clickAction } = preset
   const maxCells = rows * cols
   const streamMap = Object.fromEntries(streams.map((s) => [s.id, s]))
-  const [slots, setSlots] = useState(() => buildSlots(streams, maxCells))
-  const onPositionsSavedRef = useRef(onPositionsSaved)
-  onPositionsSavedRef.current = onPositionsSaved
+  const [slots, setSlots] = useState<(string | null)[]>(() => normalize(preset.slots, maxCells))
+  const [activeDragId, setActiveDragId] = useState<string | null>(null)
+  const onSlotsSavedRef = useRef(onSlotsSaved)
+  onSlotsSavedRef.current = onSlotsSaved
 
-  // On mount: if any stream has no tvPosition, save the auto-filled layout immediately
   useEffect(() => {
-    if (streams.length === 0) return
-    const hasUnpositioned = streams.some(s => typeof s.tvPosition !== "number")
-    if (!hasUnpositioned) return
-    const builtSlots = buildSlots(streams, maxCells)
-    saveSlots(builtSlots).then(() => onPositionsSavedRef.current?.())
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // Rebuild slots when streams are refreshed from server (positions now persisted)
-  useEffect(() => {
-    setSlots(buildSlots(streams, maxCells))
-  }, [streams, maxCells])
+    setSlots(normalize(preset.slots, maxCells))
+  }, [preset.id, preset.slots, maxCells])
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
-  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
-    const { active, over } = event
-    if (!over || active.id === over.id) return
-    const sourceIdx = Number(active.id)
-    const destIdx = Number(over.id)
-    if (slots[sourceIdx] === null) return
-
-    const newSlots = [...slots]
-    ;[newSlots[sourceIdx], newSlots[destIdx]] = [newSlots[destIdx], newSlots[sourceIdx]]
+  const persist = useCallback(async (newSlots: (string | null)[]) => {
     setSlots(newSlots)
+    await saveSlots(preset.id, newSlots)
+    onSlotsSavedRef.current?.()
+  }, [preset.id])
 
-    await saveSlots(newSlots)
-    onPositionsSavedRef.current?.()
-  }, [slots])
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveDragId(String(event.active.id))
+  }, [])
 
-  const slotIds = Array.from({ length: maxCells }, (_, i) => i)
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    setActiveDragId(null)
+    const { active, over } = event
+    if (!over) return
+    const activeId = String(active.id)
+    const overId = String(over.id)
+    if (activeId === overId) return
+
+    // Sidebar item dropped
+    if (activeId.startsWith("sb:")) {
+      const streamId = activeId.slice(3)
+      if (overId.startsWith("slot:")) {
+        const destIdx = Number(overId.slice(5))
+        // Replace whatever was in the slot (it returns to sidebar implicitly).
+        // If the same stream is somehow already placed elsewhere, clear that slot to avoid duplicates.
+        const newSlots = slots.map((v) => (v === streamId ? null : v))
+        newSlots[destIdx] = streamId
+        await persist(newSlots)
+      }
+      return
+    }
+
+    // Slot drag
+    if (activeId.startsWith("slot:")) {
+      const sourceIdx = Number(activeId.slice(5))
+      if (slots[sourceIdx] === null) return
+
+      // Drop on trash zone → remove
+      if (overId === "trash") {
+        const newSlots = [...slots]
+        newSlots[sourceIdx] = null
+        await persist(newSlots)
+        return
+      }
+
+      // Slot ↔ slot swap (existing behavior)
+      if (overId.startsWith("slot:")) {
+        const destIdx = Number(overId.slice(5))
+        const newSlots = [...slots]
+        ;[newSlots[sourceIdx], newSlots[destIdx]] = [newSlots[destIdx], newSlots[sourceIdx]]
+        await persist(newSlots)
+        return
+      }
+    }
+  }, [slots, persist])
+
+  const slotIds = Array.from({ length: maxCells }, (_, i) => `slot:${i}`)
+
+  // Streams not currently placed in any slot, ordered by stream.order (streams prop is already sorted).
+  const placedSet = new Set(slots.filter((v): v is string => v !== null))
+  const availableStreams = streams.filter((s) => !placedSet.has(s.id))
+
+  // DragOverlay only for sidebar items — the floating preview escapes the sidebar's
+  // overflow-y-auto (which was clipping the dragged item). Slot drags use the existing
+  // useSortable transform which is fine since the grid has no overflow ancestor.
+  const dragPreviewStream: Stream | null = activeDragId?.startsWith("sb:")
+    ? (streamMap[activeDragId.slice(3)] ?? null)
+    : null
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-      <SortableContext items={slotIds} strategy={rectSortingStrategy}>
-        <div
-          className="h-full"
-          style={{
-            display: "grid",
-            gridTemplateColumns: `repeat(${cols}, 1fr)`,
-            gridTemplateRows: `repeat(${rows}, 1fr)`,
-          }}
-        >
-          {slotIds.map((i) => (
-            <TvCell
-              key={i}
-              slotIndex={i}
-              stream={slots[i] ? (streamMap[slots[i]!] ?? null) : null}
-              clickAction={clickAction}
-              pureMode={pureMode}
-              newTab={newTab}
-            />
-          ))}
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={() => setActiveDragId(null)}
+    >
+      <div className="h-full flex overflow-hidden">
+        {/* Grid (left) */}
+        <div className="flex-1 min-w-0 h-full">
+          <SortableContext items={slotIds} strategy={noopStrategy}>
+            <div
+              className="h-full"
+              style={{
+                display: "grid",
+                gridTemplateColumns: `repeat(${cols}, 1fr)`,
+                gridTemplateRows: `repeat(${rows}, 1fr)`,
+              }}
+            >
+              {slotIds.map((id, i) => (
+                <TvCell
+                  key={id}
+                  slotIndex={i}
+                  stream={slots[i] ? (streamMap[slots[i]!] ?? null) : null}
+                  clickAction={clickAction}
+                  pureMode={pureMode}
+                  newTab={newTab}
+                  onContextMenu={(e, s) => setCtxMenu({ x: e.clientX, y: e.clientY, stream: s })}
+                />
+              ))}
+            </div>
+          </SortableContext>
         </div>
-      </SortableContext>
+
+        {/* Sidebar (right) — hidden on mobile */}
+        <aside className="hidden sm:flex flex-col gap-2 w-[220px] shrink-0 border-l border-[#161616] bg-[#080808] p-3 overflow-y-auto">
+          <div className="flex flex-col gap-1">
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Available streams</p>
+            <p className="text-[10px] text-muted-foreground/70">Drag into a cell</p>
+          </div>
+          <TrashZone />
+          {availableStreams.length === 0 ? (
+            <p className="text-xs text-muted-foreground/70 px-1 py-4 text-center">All streams in preset</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {availableStreams.map((s) => (
+                <SidebarItem key={s.id} stream={s} />
+              ))}
+            </div>
+          )}
+        </aside>
+      </div>
+      <DragOverlay dropAnimation={null}>
+        {dragPreviewStream ? <SidebarItemPreview stream={dragPreviewStream} /> : null}
+      </DragOverlay>
+      {ctxMenu && (
+        <StreamContextMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          stream={ctxMenu.stream}
+          status={statuses?.[ctxMenu.stream.id]}
+          localStatus={localStatuses?.[ctxMenu.stream.id] ?? null}
+          onClose={() => setCtxMenu(null)}
+          onRefresh={() => { onRefresh?.() }}
+          onLocalStatus={(id, s) => onLocalStatus?.(id, s)}
+          onStreamUpdate={(id, patch) => onStreamUpdate?.(id, patch)}
+        />
+      )}
     </DndContext>
   )
+}
+
+function normalize(slots: (string | null)[], size: number): (string | null)[] {
+  const out = new Array<string | null>(size).fill(null)
+  for (let i = 0; i < Math.min(slots.length, size); i++) out[i] = slots[i] ?? null
+  return out
 }

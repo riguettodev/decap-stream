@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { readPresetsFile } from "@/lib/tvPresets"
 
 const TV_CLICK_ACTIONS = ["hls", "html", "vnc"] as const
 type TvClickAction = typeof TV_CLICK_ACTIONS[number]
@@ -8,6 +9,9 @@ function parseTvClickAction(v: string | undefined): TvClickAction | undefined {
 }
 
 export async function GET() {
+  let selectedPresetId: string | null = null
+  try { selectedPresetId = readPresetsFile().selectedPresetId } catch {}
+
   return NextResponse.json({
     pureMode: process.env.DEFAULT_PURE_MODE === "true",
     newTab: process.env.DEFAULT_OPEN_NEW_TAB === "true",
@@ -17,5 +21,6 @@ export async function GET() {
     tvRows: Math.max(1, Math.min(10, Number(process.env.DEFAULT_TV_ROWS) || 3)),
     tvCols: Math.max(1, Math.min(10, Number(process.env.DEFAULT_TV_COLS) || 4)),
     tvClickAction: parseTvClickAction(process.env.DEFAULT_TV_CLICK_ACTION) ?? "hls",
+    selectedPresetId,
   })
 }

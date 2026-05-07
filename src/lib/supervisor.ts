@@ -3,6 +3,7 @@ import path from "path"
 import { execSync, spawn } from "child_process"
 import type { Stream } from "@/types/stream"
 import { getStream } from "./db"
+import { buildExtensionsFlags, buildBgNetFlag, writeForcelistPolicy, removeStreamExtensions } from "./extensions"
 
 const DATA_DIR = process.env.DATA_DIR ?? "/app/data"
 const STREAMS_DIR = path.join(DATA_DIR, "streams")
@@ -93,6 +94,14 @@ function buildEncoderFlags(stream: Stream): string {
   return lines.join("\n")
 }
 
+// Returns the clamped zoom factor (default 1.0), e.g. 0.5, 1, 1.5, 2.
+function effectiveZoom(stream: Stream): number {
+  const z = stream.zoom
+  if (z == null || !Number.isFinite(z) || z <= 0) return 1
+  return Math.min(5, Math.max(0.25, z))
+}
+
+
 // converts "1920x1080" → "1920,1080" for Chrome --window-size flag
 function resolutionToChrome(res: string): string {
   return res.replace("x", ",")
@@ -128,10 +137,15 @@ export function provisionStream(stream: Stream): void {
     USER:         stream.user ?? "",
     PASS:         stream.pass ?? "",
     GPU_FLAGS:            stream.gpu ? "" : "    --disable-gpu \\\n",
+    ZOOM_FACTOR:          parseFloat(effectiveZoom(stream).toFixed(4)).toString(),
     ENCODER_FLAGS:        buildEncoderFlags(stream),
     AUTO_RELOAD:          stream.autoReload ? "true" : "false",
     AUTO_RELOAD_INTERVAL: stream.autoReloadInterval ?? 3600,
+    EXTENSIONS_FLAGS:     buildExtensionsFlags(stream),
+    BG_NET_FLAG:          buildBgNetFlag(stream),
   }
+
+  writeForcelistPolicy(stream)
 
   const confTpl = fs.readFileSync("/opt/scripts/stream.template.conf", "utf-8")
   fs.writeFileSync(path.join(dir, "stream.conf"), render(confTpl, vars), "utf-8")
@@ -158,14 +172,37 @@ export function recreateStream(id: string): void {
 }
 
 export function startStream(id: string): void {
-  const programs = ["xvfb", "chromium", "autologin", "autoreload", "x11vnc", "ffmpeg"]
+  const programs = ["xvfb", "chromium", "autologin", "applyzoom", "autoreload", "x11vnc", "ffmpeg"]
   for (const p of programs) supervisorctl(`start ${p}-${id}`)
   captureThumb(id, 60)
 }
 
 export function stopStream(id: string): void {
-  const programs = ["ffmpeg", "x11vnc", "autoreload", "autologin", "chromium", "xvfb"]
+  const programs = ["ffmpeg", "x11vnc", "autoreload", "applyzoom", "autologin", "chromium", "xvfb"]
   for (const p of programs) supervisorctl(`stop ${p}-${id}`)
+}
+
+export function applyExtensions(id: string): void {
+  const stream = getStream(id)
+  if (!stream) return
+  provisionStream(stream)
+  // provisionStream already wrote the forcelist policy + new conf
+  // restart only chromium + autologin (ffmpeg keeps running on Xvfb)
+  supervisorctl(`stop autologin-${id}`)
+  supervisorctl(`stop chromium-${id}`)
+  supervisorctl(`start chromium-${id}`)
+  supervisorctl(`start autologin-${id}`)
+}
+
+export function applyZoom(id: string): void {
+  const stream = getStream(id)
+  if (!stream) return
+  provisionStream(stream)
+  // applyzoom.sh always sends Ctrl+0 first to reset to 100%, then steps to
+  // the target — so we DON'T need to restart Chromium. Just bounce applyzoom
+  // so it picks up the new ZOOM_FACTOR env and re-applies on the live tab.
+  supervisorctl(`stop applyzoom-${id}`)
+  supervisorctl(`start applyzoom-${id}`)
 }
 
 export function applyAutoReload(id: string): void {
@@ -189,6 +226,7 @@ export function removeStream(id: string): void {
   supervisorctl("reread")
   supervisorctl("update")
   fs.rmSync(streamDir(id), { recursive: true, force: true })
+  removeStreamExtensions(id)
 }
 
 export function captureThumb(streamId: string, delay = 60): void {

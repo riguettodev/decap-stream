@@ -2,6 +2,7 @@
 node_modules
 .next
 npm-debug.log*
+.temp
 
 # Git
 .git

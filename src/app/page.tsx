@@ -6,9 +6,10 @@ import { cn } from "@/lib/utils"
 import { StreamCard } from "@/components/StreamCard"
 import { Toggle } from "@/components/Toggle"
 import { TvLayoutGrid } from "@/components/TvLayoutGrid"
+import { TvPresetSelector } from "@/components/TvPresetSelector"
 import { ViewersPopup } from "@/components/ViewersPopup"
-import type { TvClickAction } from "@/components/TvLayoutGrid"
 import type { Stream, ViewersResponse } from "@/types/stream"
+import type { TvPresetsFile, TvPreset } from "@/types/tvPreset"
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core"
 import type { DragEndEvent } from "@dnd-kit/core"
 import { SortableContext, useSortable, rectSortingStrategy, arrayMove } from "@dnd-kit/sortable"
@@ -20,9 +21,6 @@ type GlobalPrefs = {
   newTab: boolean
   autoReload: boolean
   reloadInterval: number
-  tvRows: number
-  tvCols: number
-  tvClickAction: TvClickAction
 }
 
 const DEFAULT_GLOBAL_PREFS: GlobalPrefs = {
@@ -30,9 +28,6 @@ const DEFAULT_GLOBAL_PREFS: GlobalPrefs = {
   newTab: false,
   autoReload: false,
   reloadInterval: 2,
-  tvRows: 3,
-  tvCols: 4,
-  tvClickAction: "hls",
 }
 
 const CARD_WIDTHS: Record<CardSize, string> = { mini: "sm:max-w-[200px]", sm: "sm:max-w-[240px]", md: "sm:max-w-[300px]", lg: "sm:max-w-[380px]" }
@@ -44,6 +39,7 @@ function SortableStreamCard(props: {
   cardSize: CardSize
   onRefresh: () => void
   onLocalStatus: (id: string, s: string | null) => void
+  onStreamUpdate: (id: string, patch: Partial<Stream>) => void
   globalPrefs: GlobalPrefs
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.stream.id })
@@ -164,47 +160,9 @@ function SettingsPopup({ cardSize, onCardSize, globalPrefs, onGlobalPrefs, tvLay
             <span>TV Layout</span>
           </button>
           {tvLayoutActive && (
-            <div className="flex flex-col gap-3 pt-1">
-              <div className="flex items-center gap-2 px-1 py-1">
-                <span className="text-xs text-muted-foreground">Grid</span>
-                <input
-                  type="number" min={1} max={10}
-                  value={globalPrefs.tvRows}
-                  onChange={(e) => onGlobalPrefs({ tvRows: Math.max(1, Math.min(10, Number(e.target.value) || 1)) })}
-                  className="w-16 px-2 py-1 text-xs rounded border border-border bg-muted text-center"
-                />
-                <span className="text-xs text-muted-foreground">×</span>
-                <input
-                  type="number" min={1} max={10}
-                  value={globalPrefs.tvCols}
-                  onChange={(e) => onGlobalPrefs({ tvCols: Math.max(1, Math.min(10, Number(e.target.value) || 1)) })}
-                  className="w-16 px-2 py-1 text-xs rounded border border-border bg-muted text-center"
-                />
-                <span className="text-xs text-muted-foreground">= {globalPrefs.tvRows * globalPrefs.tvCols}</span>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <span className="text-xs text-muted-foreground px-1">Clicking a stream opens</span>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {([
-                    { value: "hls", label: "Player", desc: "HLS stream" },
-                    { value: "html", label: "HTML", desc: "Embedded page" },
-                    { value: "vnc", label: "VNC", desc: "Remote screen" },
-                  ] as const).map(({ value, label, desc }) => (
-                    <button
-                      key={value}
-                      onClick={() => onGlobalPrefs({ tvClickAction: value })}
-                      className="flex flex-col items-center gap-0.5 px-2 py-2 rounded border text-xs transition-colors cursor-pointer"
-                      style={globalPrefs.tvClickAction === value
-                        ? { background: "#ededed", color: "#0a0a0a", borderColor: "#ededed" }
-                        : {}}
-                    >
-                      <span className="font-medium">{label}</span>
-                      <span className={`text-[10px] ${globalPrefs.tvClickAction === value ? "text-[#777]" : "text-muted-foreground"}`}>{desc}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
+            <p className="text-[11px] text-muted-foreground px-1 pt-1">
+              Grid size and click action are configured per preset (selector in the header).
+            </p>
           )}
         </div>
 
@@ -238,6 +196,19 @@ export default function GalleryPage() {
   const [authEnabled, setAuthEnabled] = useState(false)
   const [globalPrefs, setGlobalPrefs] = useState<GlobalPrefs>(DEFAULT_GLOBAL_PREFS)
   const [tvLayoutActive, setTvLayoutActive] = useState(false)
+  const [presetsFile, setPresetsFile] = useState<TvPresetsFile | null>(null)
+
+  const fetchPresets = useCallback(async () => {
+    try {
+      const res = await fetch("/api/tv-presets")
+      const data: TvPresetsFile = await res.json()
+      setPresetsFile(data)
+    } catch {}
+  }, [])
+
+  const selectedPreset: TvPreset | null = presetsFile
+    ? (presetsFile.presets.find(p => p.id === presetsFile.selectedPresetId) ?? presetsFile.presets[0] ?? null)
+    : null
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
@@ -262,19 +233,23 @@ export default function GalleryPage() {
       const savedTv = localStorage.getItem("tv-layout")
       if (savedTv !== null) setTvLayoutActive(savedTv === "true")
       const savedPrefs = localStorage.getItem("global-prefs")
-      const parsed: Partial<GlobalPrefs> = savedPrefs ? JSON.parse(savedPrefs) : {}
-      if (savedPrefs) setGlobalPrefs({ ...DEFAULT_GLOBAL_PREFS, ...parsed })
-      // Fetch config if: no prefs yet (first visit), OR TV prefs are missing (new fields for existing users)
-      if (!savedPrefs || !("tvRows" in parsed)) {
+      if (savedPrefs) {
+        const parsed: Partial<GlobalPrefs> = JSON.parse(savedPrefs)
+        setGlobalPrefs({ ...DEFAULT_GLOBAL_PREFS, ...parsed })
+      } else {
+        // First visit: pull defaults from /api/config
         fetch("/api/config").then(r => r.json()).then((cfg: Partial<GlobalPrefs> & { tvLayout?: boolean }) => {
           if (savedTv === null && typeof cfg.tvLayout === "boolean") {
             setTvLayoutActive(cfg.tvLayout)
             localStorage.setItem("tv-layout", String(cfg.tvLayout))
           }
           setGlobalPrefs(prev => {
-            const next = savedPrefs
-              ? { ...prev, tvRows: cfg.tvRows ?? prev.tvRows, tvCols: cfg.tvCols ?? prev.tvCols, tvClickAction: cfg.tvClickAction ?? prev.tvClickAction }
-              : { ...prev, ...cfg }
+            const next: GlobalPrefs = {
+              pureMode: cfg.pureMode ?? prev.pureMode,
+              newTab: cfg.newTab ?? prev.newTab,
+              autoReload: cfg.autoReload ?? prev.autoReload,
+              reloadInterval: cfg.reloadInterval ?? prev.reloadInterval,
+            }
             try { localStorage.setItem("global-prefs", JSON.stringify(next)) } catch {}
             return next
           })
@@ -282,6 +257,9 @@ export default function GalleryPage() {
       }
     } catch {}
   }, [])
+
+  // Load presets file (always, regardless of TV mode — server is source of truth)
+  useEffect(() => { fetchPresets() }, [fetchPresets])
 
   function updateGlobalPrefs(patch: Partial<GlobalPrefs>) {
     setGlobalPrefs(prev => {
@@ -295,6 +273,12 @@ export default function GalleryPage() {
     setTvLayoutActive(v)
     localStorage.setItem("tv-layout", String(v))
   }
+
+  // Optimistic merge — used by the menu to reflect a saved field (zoom, etc.)
+  // immediately without waiting for the POST + refetch round-trip.
+  const patchStream = useCallback((id: string, patch: Partial<Stream>) => {
+    setStreams((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)))
+  }, [])
 
   const fetchStreams = useCallback(async (manual = false) => {
     if (manual) setRefreshing(true)
@@ -375,17 +359,22 @@ export default function GalleryPage() {
             </button>
           )}
           {tvLayoutActive && (
-            <button
-              onClick={() => {
-                const url = `/api/tv-wall?rows=${globalPrefs.tvRows}&cols=${globalPrefs.tvCols}${globalPrefs.pureMode ? "&pure=1" : ""}`
-                if (globalPrefs.newTab) window.open(url, "_blank")
-                else window.location.href = url
-              }}
-              className={cn(btnBase, "hidden sm:flex")}
-              title="Play TV Wall"
-            >
-              <Play className="w-3.5 h-3.5" />
-            </button>
+            <>
+              <TvPresetSelector presetsFile={presetsFile} onChanged={fetchPresets} />
+              <button
+                onClick={() => {
+                  if (!selectedPreset) { alert("No preset selected"); return }
+                  const url = `/api/tv-wall?preset=${encodeURIComponent(selectedPreset.id)}${globalPrefs.pureMode ? "&pure=1" : ""}`
+                  if (globalPrefs.newTab) window.open(url, "_blank")
+                  else window.location.href = url
+                }}
+                className={cn(btnBase, "hidden sm:flex")}
+                title="Play TV Wall"
+                disabled={!selectedPreset}
+              >
+                <Play className="w-3.5 h-3.5" />
+              </button>
+            </>
           )}
           <button
             onClick={() => updateTvLayoutActive(!tvLayoutActive)}
@@ -423,6 +412,7 @@ export default function GalleryPage() {
         <ViewersPopup
           data={viewersData}
           streams={streams}
+          presets={presetsFile?.presets ?? []}
           pureMode={globalPrefs.pureMode}
           onClose={() => setViewersOpen(false)}
         />
@@ -445,15 +435,24 @@ export default function GalleryPage() {
 
       {tvLayoutActive ? (
         <main className="flex-1 min-h-0 overflow-hidden">
-          <TvLayoutGrid
-            streams={streams}
-            rows={globalPrefs.tvRows}
-            cols={globalPrefs.tvCols}
-            clickAction={globalPrefs.tvClickAction}
-            pureMode={globalPrefs.pureMode}
-            newTab={globalPrefs.newTab}
-            onPositionsSaved={fetchStreams}
-          />
+          {selectedPreset ? (
+            <TvLayoutGrid
+              streams={streams}
+              preset={selectedPreset}
+              pureMode={globalPrefs.pureMode}
+              newTab={globalPrefs.newTab}
+              onSlotsSaved={fetchPresets}
+              statuses={statuses}
+              localStatuses={localStatuses}
+              onRefresh={() => fetchStreams()}
+              onLocalStatus={setLocalStatus}
+              onStreamUpdate={patchStream}
+            />
+          ) : (
+            <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+              No preset available.
+            </div>
+          )}
         </main>
       ) : (
         <main className="flex-1 px-3 pt-3 pb-40 sm:p-6">
@@ -483,6 +482,7 @@ export default function GalleryPage() {
                       cardSize={cardSize}
                       onRefresh={() => fetchStreams()}
                       onLocalStatus={setLocalStatus}
+                      onStreamUpdate={patchStream}
                       globalPrefs={globalPrefs}
                     />
                   ))}

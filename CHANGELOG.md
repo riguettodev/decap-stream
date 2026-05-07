@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Per-stream Chromium extensions** — load unpacked extensions (ZIP upload, slug-sanitized into `/app/data/extensions/{streamId}/`) and/or Chrome Web Store IDs via `ExtensionInstallForcelist` managed policies; "Extensions..." button in the card menu opens a modal with two tabs (Web Store IDs, Upload) and an Apply & Restart action that bounces only Chromium + autologin.
+- **Per-stream Chromium page zoom** — `zoom` field (one of 17 discrete Chromium steps from 25 % to 500 %) applied as real page zoom (Ctrl+/Ctrl-) by an `applyzoom-{id}` supervisor process that uses `xdotool` to send keyboard shortcuts to the stream's window. No Chromium restart required when changing.
+- **Multiple TV Wall presets** — TV Layout grids are now named presets (`rows`, `cols`, `clickAction`, `slots[]`) stored server-side in `tv-presets.json`. Header dropdown lets you switch/create/edit/reorder presets; `/api/tv-wall?preset=<id>` opens the wall for a given preset.
+- **TV Wall fill/align per stream** — `tvFill` (object-fit cover) + `tvAlign` (`left`/`center`/`right`) control how each stream renders inside its slot in the wall. Configured from the card's 3-dot menu.
+- **Right-click context menu in TV Layout** — every cell with a stream exposes the full card menu (Edit, Restart, Recreate, Start/Stop, Copy RTMP, Refresh thumb, Extensions, Auto-reload, TV fill, Zoom, Delete) on right-click.
+- **Available-streams sidebar in TV Layout** — desktop-only sidebar lists streams not yet placed in the active preset; drag from sidebar into any slot, drag back to the trash zone to remove.
+- **Viewer tracking per TV preset** — wall viewers are now grouped by `(IP, presetId)` and listed as `TV Wall — <preset name>` in the viewers popup, so simultaneous viewers of different presets are no longer collapsed.
+
+### Changed
+
+- **applyZoom does not restart Chromium** — `applyzoom.sh` always sends `Ctrl+0` first to reset to 100 %, then steps to the target with `Ctrl+KP_Add` / `Ctrl+KP_Subtract`. Switching zoom is now a sub-second operation.
+- **TV Layout configuration moved out of `global-prefs`** — `tvRows`, `tvCols`, `tvClickAction` were dropped from `localStorage` and now live in the active preset on the server. Sessions with old localStorage keys are silently ignored.
+- **TV Wall HTML respects per-stream `tvFill` / `tvAlign`** when rendering each cell. Other players (`/static/[id]`, `/player/[id]`, `/player/[id].html`) keep `object-fit: contain`.
+- **`recreateStream` preserves uploaded extensions** — wipes only the `chrome-profile` directory; `/app/data/extensions/{id}/` survives so unpacked extensions don't need to be re-uploaded.
+
+### Fixed
+
+- Right-click on a TV Layout cell no longer triggers a drag.
+- Reopening the zoom menu immediately after changing the value used to show the previous value briefly; an optimistic update + prop-sync `useEffect` now keep the UI consistent.
+
 ## Decap Stream v1.1.0
 
 ### Added

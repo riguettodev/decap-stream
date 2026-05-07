@@ -13,14 +13,17 @@ export function extractIp(req: NextRequest): string {
   )
 }
 
-export function touchHlsViewer(streamId: string, ip: string, mode: ViewerMode): void {
-  const key = `${streamId}:${ip}:${mode}`
+export function touchHlsViewer(streamId: string, ip: string, mode: ViewerMode, presetId?: string): void {
+  // presetId is only meaningful for `wall` — including it in the key keeps
+  // viewers of different presets as distinct sessions.
+  const key = `${streamId}:${ip}:${mode}:${presetId ?? ""}`
   const existing = hlsViewers.get(key)
   const now = Date.now()
   hlsViewers.set(key, {
     ip,
     streamId,
     mode,
+    presetId,
     connectedAt: existing?.connectedAt ?? now,
     lastSeenAt: now,
   })
