@@ -23,6 +23,28 @@ function effectiveZoom(stream) {
   return Math.min(5, Math.max(0.25, z))
 }
 
+// Mirror of buildGpuFlags in src/lib/supervisor.ts — keep in sync.
+function effectiveGpuMode(stream) {
+  return stream.gpuMode ?? (stream.gpu ? 'hardware' : 'off')
+}
+
+function buildGpuFlags(stream) {
+  switch (effectiveGpuMode(stream)) {
+    case 'hardware':
+      return ''
+    case 'software':
+      return (
+        '    --use-gl=angle \\\n' +
+        '    --use-angle=swiftshader \\\n' +
+        '    --enable-unsafe-swiftshader \\\n' +
+        '    --ignore-gpu-blocklist \\\n'
+      )
+    case 'off':
+    default:
+      return '    --disable-gpu \\\n'
+  }
+}
+
 function buildExtensionsFlags(stream) {
   const ext = stream.extensions ?? {}
   const slugs = (ext.unpacked ?? []).filter((s) => SLUG_RE.test(s))
@@ -159,7 +181,7 @@ for (const stream of streams) {
     THREADS:      stream.threads ?? 0,
     USER:         stream.user ?? '',
     PASS:         stream.pass ?? '',
-    GPU_FLAGS:           stream.gpu ? '' : '    --disable-gpu \\\n',
+    GPU_FLAGS:           buildGpuFlags(stream),
     ZOOM_FACTOR:         parseFloat(effectiveZoom(stream).toFixed(4)).toString(),
     ENCODER_FLAGS:       buildEncoderFlags(stream),
     AUTO_RELOAD:         stream.autoReload ? 'true' : 'false',

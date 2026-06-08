@@ -28,7 +28,7 @@ const TOOLTIPS = {
   delay:      "Seconds to wait after Chromium starts before ffmpeg begins capturing. Gives the page time to fully load and render.",
   gop:        "Keyframe interval in frames. Recommended: 2× FPS. Affects HLS segment alignment and seek accuracy. Auto-calculated from FPS unless manually changed.",
   threads:    "Number of ffmpeg encoding threads. 0 = auto-detect (recommended). Increasing this can reduce latency on multi-core systems at the cost of slightly reduced compression efficiency.",
-  gpu:        "Enable GPU acceleration in Chromium. Disabled by default because most container environments lack GPU access. Enable only if the host has a compatible GPU and the container has access to it.",
+  gpuMode:    "Chromium rendering backend.\n• Disabled — uses --disable-gpu. Lowest CPU. WebGL/maps (Mapbox, MapLibre) won't render.\n• Software WebGL — SwiftShader CPU rasterizer. Makes WebGL/maps work without a GPU, but is CPU-heavy (a 1080p map can saturate several cores) and uses Chromium's --enable-unsafe-swiftshader (lower security; use only for trusted URLs).\n• Hardware GPU — no --disable-gpu; only works if the host exposes a real GPU to the container.",
 }
 
 function Tooltip({ text }: { text: string }) {
@@ -103,6 +103,7 @@ export function StreamForm({ initial }: Props) {
       gop:        initial.gop,
       threads:    initial.threads ?? 0,
       gpu:        initial.gpu ?? false,
+      gpuMode:    initial.gpuMode ?? (initial.gpu ? "hardware" : "off"),
     } : {}),
   })
 
@@ -119,6 +120,11 @@ export function StreamForm({ initial }: Props) {
   function setFps(value: number) {
     set("fps", value)
     if (!gopManuallyEdited) set("gop", value * 2)
+  }
+
+  // Keep the deprecated `gpu` boolean in sync with the 3-way mode for rollback/back-compat.
+  function setGpuMode(mode: "off" | "software" | "hardware") {
+    setForm((f) => ({ ...f, gpuMode: mode, gpu: mode === "hardware" }))
   }
 
   function setGop(value: number) {
@@ -278,19 +284,16 @@ export function StreamForm({ initial }: Props) {
                     <Input type="number" min={0} value={form.threads ?? 0} onChange={(e) => set("threads", Number(e.target.value))} />
                   </Field>
                 </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => set("gpu", !form.gpu)}
-                    className={cn("relative w-9 h-5 rounded-full transition-colors shrink-0 overflow-hidden", form.gpu ? "bg-blue-600" : "bg-zinc-600")}
+                <Field label="Rendering (Chromium)" tooltip={TOOLTIPS.gpuMode}>
+                  <Select
+                    value={form.gpuMode ?? "off"}
+                    onChange={(e) => setGpuMode(e.target.value as "off" | "software" | "hardware")}
                   >
-                    <span className={cn("absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all", form.gpu ? "left-[18px]" : "left-0.5")} />
-                  </button>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm">GPU acceleration (Chromium)</span>
-                    <Tooltip text={TOOLTIPS.gpu} />
-                  </div>
-                </div>
+                    <option value="off" style={{ background: "#1a1a1a", color: "#ededed" }}>Disabled — lowest CPU, no WebGL (default)</option>
+                    <option value="software" style={{ background: "#1a1a1a", color: "#ededed" }}>Software WebGL (SwiftShader) — maps/WebGL, high CPU</option>
+                    <option value="hardware" style={{ background: "#1a1a1a", color: "#ededed" }}>Hardware GPU — requires GPU passthrough</option>
+                  </Select>
+                </Field>
               </div>
             )}
           </div>

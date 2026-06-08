@@ -22,7 +22,12 @@ export interface Stream {
   vncPort: number
   debugPort: number
 
-  gpu: boolean
+  gpu: boolean  // @deprecated — kept for rollback/back-compat; derived from gpuMode (gpu === (gpuMode === "hardware"))
+  // Chromium rendering backend. Default "off" (--disable-gpu, lowest CPU, no WebGL).
+  // "software" = SwiftShader CPU WebGL — maps/WebGL work without a GPU, but CPU-heavy.
+  // "hardware" = no --disable-gpu — needs a real GPU exposed to the container.
+  // Absent → derived from the legacy `gpu` boolean (true → "hardware", false → "off").
+  gpuMode?: "off" | "software" | "hardware"
 
   zoom?: number  // Chromium --force-device-scale-factor; default 1.0; range 0.25–5.0
 
@@ -89,6 +94,7 @@ export const STREAM_DEFAULTS: Omit<StreamCreate, "id" | "name" | "url"> = {
   gop: 60,
   threads: 0,
   gpu: false,
+  gpuMode: "off",
   zoom: 1.0,
   tvFill: false,
   tvAlign: "center",

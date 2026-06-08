@@ -1,5 +1,5 @@
 SHELL := /bin/bash
-IMAGE ?= registry.kralot.cloud/kralot/decap-stream
+IMAGE ?= ghcr.io/riguettodev/decap-stream
 TAG   ?= ""
 
 .PHONY: build push

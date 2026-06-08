@@ -101,6 +101,35 @@ function effectiveZoom(stream: Stream): number {
   return Math.min(5, Math.max(0.25, z))
 }
 
+// Builds the {{GPU_FLAGS}} block for the Chromium command (3-way rendering mode).
+//   "off"      → --disable-gpu (default; lowest CPU; WebGL/maps don't render)
+//   "software" → SwiftShader CPU WebGL. --disable-gpu MUST be absent (ANGLE/SwiftShader
+//                run inside the GPU process). --enable-unsafe-swiftshader is mandatory on
+//                Chromium ≥137 (M147 here) — without it WebGL stays Disabled. SwiftShader
+//                ships in Debian chromium-common, so no extra apt package is required.
+//   "hardware" → no flag; only useful when a real GPU is exposed to the container.
+// Legacy streams without gpuMode are derived from the deprecated `gpu` boolean.
+function effectiveGpuMode(stream: Stream): "off" | "software" | "hardware" {
+  return stream.gpuMode ?? (stream.gpu ? "hardware" : "off")
+}
+
+function buildGpuFlags(stream: Stream): string {
+  switch (effectiveGpuMode(stream)) {
+    case "hardware":
+      return ""
+    case "software":
+      return (
+        "    --use-gl=angle \\\n" +
+        "    --use-angle=swiftshader \\\n" +
+        "    --enable-unsafe-swiftshader \\\n" +
+        "    --ignore-gpu-blocklist \\\n"
+      )
+    case "off":
+    default:
+      return "    --disable-gpu \\\n"
+  }
+}
+
 
 // converts "1920x1080" → "1920,1080" for Chrome --window-size flag
 function resolutionToChrome(res: string): string {
@@ -136,7 +165,7 @@ export function provisionStream(stream: Stream): void {
     THREADS:      stream.threads ?? 0,
     USER:         stream.user ?? "",
     PASS:         stream.pass ?? "",
-    GPU_FLAGS:            stream.gpu ? "" : "    --disable-gpu \\\n",
+    GPU_FLAGS:            buildGpuFlags(stream),
     ZOOM_FACTOR:          parseFloat(effectiveZoom(stream).toFixed(4)).toString(),
     ENCODER_FLAGS:        buildEncoderFlags(stream),
     AUTO_RELOAD:          stream.autoReload ? "true" : "false",
