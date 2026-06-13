@@ -21,6 +21,8 @@ services:
       DEFAULT_TV_ROWS: 3            # Default Rows for TV Layout
       DEFAULT_TV_COLS: 4            # Default Columns for TV Layout
       DEFAULT_TV_CLICK_ACTION: hls  # "hls" / "html" / "vnc"
+      # LOGIN_CHECK_INTERVAL: 60      # Seconds between auto-login session checks (default: 60)
+      # LOGIN_MAX_RETRIES: 5          # Consecutive failed login attempts before giving up; 0 = unlimited (default: 5)
       # FFMPEG_HWACCEL: nvenc         # GPU encoding: nvenc (NVIDIA), vaapi / qsv (Intel/AMD)
       # LD_LIBRARY_PATH: /usr/lib/wsl/lib  # WSL2 + nvenc only
     ports:

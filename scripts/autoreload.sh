@@ -16,7 +16,9 @@ while true; do
   wait $SLEEP_PID
   SLEEP_PID=""
 
-  node -e "
+  # timeout: sem ele, um socket pendurado (Chromium reiniciando, upgrade que
+  # nunca responde) deixa o node vivo pra sempre e congela o loop inteiro
+  timeout 15 node -e "
 const http = require('http');
 const net = require('net');
 const crypto = require('crypto');
