@@ -134,10 +134,15 @@ type_credentials() {
   DISPLAY=${DISPLAY} xdotool search --sync --onlyvisible --class chromium windowfocus windowraise
   sleep 1
   if [ "$mode" != "pass" ]; then
+    # limpa o campo (Ctrl+a + Delete) antes de digitar — campos com valor salvo
+    # pelo browser fariam "useruser" se a gente só digitasse por cima
+    DISPLAY=${DISPLAY} xdotool key --clearmodifiers ctrl+a Delete
     DISPLAY=${DISPLAY} xdotool type --clearmodifiers --delay 50 "${LOGIN_USER}"
     DISPLAY=${DISPLAY} xdotool key Tab
     sleep 0.3
   fi
+  # idem para o password: pode vir pré-preenchido pelo password manager
+  DISPLAY=${DISPLAY} xdotool key --clearmodifiers ctrl+a Delete
   DISPLAY=${DISPLAY} xdotool type --clearmodifiers --delay 50 "${LOGIN_PASS}"
   DISPLAY=${DISPLAY} xdotool key Return
 }
