@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { AUTH_ENABLED, COOKIE_NAME, computeSessionToken } from "@/lib/auth"
+import { AUTH_ENABLED, COOKIE_NAME, SESSION_MAX_AGE, computeSessionToken } from "@/lib/auth"
 
 const PUBLIC = ["/login", "/api/auth/login"]
 const PUBLIC_PREFIX = ["/_next/", "/favicon", "/icon", "/apple-touch", "/web-app-manifest"]
@@ -31,7 +31,7 @@ export async function middleware(request: NextRequest) {
     httpOnly: true,
     sameSite: "strict",
     path: "/",
-    maxAge: 60 * 60 * 24 * 30,
+    maxAge: SESSION_MAX_AGE,
   })
   return res
 }

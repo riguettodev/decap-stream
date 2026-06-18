@@ -89,7 +89,10 @@ if (streams.length === 0) process.exit(0)
 const confTpl = fs.readFileSync(CONF_TPL, 'utf-8')
 
 function render(tpl, vars) {
-  return tpl.replace(/\{\{(\w+)\}\}/g, (_, k) => String(vars[k] ?? ''))
+  // supervisord interpola valores de config com %(VAR)s, então todo % literal
+  // num valor injetado (ex.: %2F na URL do Grafana) precisa virar %% ou o parser
+  // do conf falha com "must be real number, not dict"
+  return tpl.replace(/\{\{(\w+)\}\}/g, (_, k) => String(vars[k] ?? '').replace(/%/g, '%%'))
 }
 
 const NVENC_PRESET = {

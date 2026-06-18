@@ -1,6 +1,6 @@
 import crypto from "crypto"
 import { type NextRequest, NextResponse } from "next/server"
-import { AUTH_ENABLED, COOKIE_NAME, computeSessionToken } from "@/lib/auth"
+import { AUTH_ENABLED, COOKIE_NAME, SESSION_MAX_AGE, computeSessionToken } from "@/lib/auth"
 
 function hash(s: string) {
   return crypto.createHash("sha256").update(s).digest()
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     httpOnly: true,
     sameSite: "strict",
     path: "/",
-    maxAge: 60 * 60 * 24 * 30, // 30 days — auto-renewed on every request (rolling session)
+    maxAge: SESSION_MAX_AGE, // default 365 days; configurable via SESSION_MAX_AGE_DAYS
   })
   return res
 }

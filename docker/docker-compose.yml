@@ -13,6 +13,7 @@ services:
       TZ: America/Sao_Paulo
       # AUTH_USER: admin              # If set (with AUTH_PASS), enables login
       # AUTH_PASS: secure_password
+      # SESSION_MAX_AGE_DAYS: 365     # Login cookie lifetime in days (default 365)
       DEFAULT_PURE_MODE: false      # Pure mode: raw .m3u8 / minimal player (no UI chrome)
       DEFAULT_OPEN_NEW_TAB: false   # Open player buttons in a new tab
       DEFAULT_RELOAD_CLIENT: false  # Auto-reload the client player page

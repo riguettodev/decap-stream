@@ -3,6 +3,13 @@
 export const AUTH_ENABLED = !!(process.env.AUTH_USER && process.env.AUTH_PASS)
 export const COOKIE_NAME = "ds_session"
 
+// Cookie lifetime in seconds. Default 365 days — a NOC TV opens a fixed stream
+// URL and never navigates, so nothing triggers a rolling refresh; the cookie
+// just has to outlive normal use. Override with SESSION_MAX_AGE_DAYS.
+// To force-invalidate every existing cookie, change AUTH_PASS (rotates the token).
+export const SESSION_MAX_AGE =
+  (Number(process.env.SESSION_MAX_AGE_DAYS) || 365) * 24 * 60 * 60
+
 // Cached promise — token is deterministic (env vars never change at runtime)
 let _tokenCache: Promise<string> | null = null
 

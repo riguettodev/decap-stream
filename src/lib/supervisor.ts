@@ -15,7 +15,10 @@ function streamDir(id: string) {
 }
 
 function render(template: string, vars: Record<string, string | number>): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, k) => String(vars[k] ?? ""))
+  // supervisord interpola valores de config com %(VAR)s, então todo % literal
+  // num valor injetado (ex.: %2F na URL do Grafana) precisa virar %% ou o parser
+  // do conf falha com "must be real number, not dict"
+  return template.replace(/\{\{(\w+)\}\}/g, (_, k) => String(vars[k] ?? "").replace(/%/g, "%%"))
 }
 
 function supervisorctl(cmd: string) {
