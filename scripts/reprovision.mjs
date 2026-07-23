@@ -123,7 +123,8 @@ function buildEncoderFlags(stream) {
     ln(`-vaapi_device /dev/dri/renderD128`)
     ln(`-vf 'format=nv12,hwupload'`)
     ln(`-c:v h264_vaapi`)
-    ln(`-profile:v baseline`)
+    // h264_vaapi só aceita constrained_baseline | main | high — "baseline" aborta o encoder
+    ln(`-profile:v constrained_baseline`)
     ln(`-level 3.1`)
     ln(`-g ${gop}`)
     ln(`-keyint_min ${gop}`)
