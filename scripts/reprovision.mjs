@@ -28,13 +28,18 @@ function effectiveGpuMode(stream) {
   return stream.gpuMode ?? (stream.gpu ? 'hardware' : 'off')
 }
 
-// ver comentário em src/lib/supervisor.ts — sway + Xwayland dá DRI3 ao X
-function displayBackend() {
+// ver comentário em src/lib/supervisor.ts — sway + Xwayland dá DRI3 ao X.
+// Decidido por-stream (stream.displayBackend), com fallback pra env DISPLAY_BACKEND.
+function displayBackend(stream) {
+  const perStream = stream?.displayBackend
+  if (perStream === 'wayland' || perStream === 'xvfb') return perStream
   return (process.env.DISPLAY_BACKEND ?? '').toLowerCase().trim() === 'wayland' ? 'wayland' : 'xvfb'
 }
 
-function displayUserLine() {
-  return displayBackend() === 'wayland' ? `user=${process.env.DISPLAY_USER ?? 'wl'}\n` : ''
+// display E x11vnc rodam como esse usuário no backend wayland (x11vnc como root
+// falha MIT-SHM contra o Xwayland do wl). {{DISPLAY_USER}} aparece nos dois blocos.
+function displayUserLine(stream) {
+  return displayBackend(stream) === 'wayland' ? `user=${process.env.DISPLAY_USER ?? 'wl'}\n` : ''
 }
 
 // ver comentário em src/lib/supervisor.ts — decode VA-API não depende de DRI3
@@ -220,8 +225,8 @@ for (const stream of streams) {
     STREAM_ID:    stream.id,
     DISPLAY:      stream.display,
     RESOLUTION:   stream.resolution,
-    DISPLAY_BACKEND: displayBackend(),
-    DISPLAY_USER: displayUserLine(),
+    DISPLAY_BACKEND: displayBackend(stream),
+    DISPLAY_USER: displayUserLine(stream),
     CHROME_SIZE:  stream.resolution.replace('x', ','),
     STREAM_URL:   stream.url,
     DEBUG_PORT:   stream.debugPort,

@@ -7,7 +7,7 @@ services:
     security_opt: [seccomp:unconfined]
     # gpus: all                     # NVIDIA (nvenc) — requer nvidia-container-toolkit
     # devices:
-    #   - /dev/dri:/dev/dri         # Intel/AMD — vaapi, qsv, DISPLAY_BACKEND, CHROMIUM_HWDECODE
+    #   - /dev/dri:/dev/dri         # Intel/AMD — necessário p/ vaapi, qsv e o backend Wayland (GPU) por-stream
     environment:
       TZ: America/Sao_Paulo
       DEFAULT_PURE_MODE: false
@@ -23,8 +23,10 @@ services:
       # SESSION_MAX_AGE_DAYS: 365   # Cookie de login, em dias (default 365)
       # LOGIN_CHECK_INTERVAL: 60    # Segundos entre checagens de sessão (default 60)
       # LOGIN_MAX_RETRIES: 5        # Tentativas consecutivas de login; 0 = ilimitado
-      # DISPLAY_BACKEND: wayland    # sway + Xwayland = render na GPU (default: xvfb, software)
-      # CHROMIUM_HWDECODE: "true"   # Decode de vídeo por VA-API (ganho em páginas com vídeo)
+      # DISPLAY_BACKEND: wayland    # DEFAULT do backend de display; a escolha real é POR-STREAM (campo na UI).
+      #                             # Wayland (sway+Xwayland) dá DRI3/GPU: só ajuda páginas WebGL/mapas.
+      #                             # PIORA portais de câmera que decodam vídeo em <canvas>. Ligue por-stream.
+      # CHROMIUM_HWDECODE: "true"   # Decode VA-API para <video> nativo. NÃO ajuda vídeo desenhado em <canvas>.
       # FFMPEG_HWACCEL: nvenc       # Encoding: nvenc / vaapi / qsv
       # FFMPEG_VAAPI_RC: cbr        # vaapi rate control: cbr / vbr / cqp
       # FFMPEG_VAAPI_QP: 24         # Quantizer para FFMPEG_VAAPI_RC=cqp (0-51)

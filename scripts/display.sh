@@ -30,7 +30,12 @@ fi
 # --- wayland backend -------------------------------------------------------
 
 export XDG_RUNTIME_DIR="/tmp/xdg-${STREAM_ID}"
-export WAYLAND_DISPLAY="wayland-${DISPLAY_N}"
+# NB: WAYLAND_DISPLAY is deliberately NOT set here. sway creates its socket with
+# wl_display_add_socket_auto(), which ignores WAYLAND_DISPLAY and always takes the
+# first free "wayland-N" name — so forcing "wayland-${DISPLAY_N}" never worked and
+# left us waiting for a socket that was never created. We let sway choose and
+# discover the name afterwards (see below). The X display number ($DISPLAY_NUM) is a
+# separate namespace set on the Xwayland command line; the two need not match.
 export WLR_BACKENDS=headless
 export WLR_RENDERER=gles2
 # wlroots needs no seat manager on the headless backend
@@ -45,7 +50,9 @@ mkdir -p "$XDG_CACHE_HOME"
 
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
-rm -f "$XDG_RUNTIME_DIR/${WAYLAND_DISPLAY}" "$XDG_RUNTIME_DIR/${WAYLAND_DISPLAY}.lock"
+# Clear any stale compositor sockets from a previous crashed run in this stream's
+# private runtime dir, so the discovery below cannot latch onto a dead socket.
+rm -f "$XDG_RUNTIME_DIR"/wayland-*
 
 SWAY_CFG="$XDG_RUNTIME_DIR/sway.conf"
 {
@@ -68,17 +75,27 @@ cleanup() {
 }
 trap cleanup TERM INT
 
-# wait for the compositor socket before starting Xwayland
+# Discover the socket sway actually created (it names it "wayland-N" itself, see the
+# note above). This runtime dir is private to this stream, so there is exactly one
+# socket to find. Bail out early if sway dies while we are waiting.
+WAYLAND_DISPLAY=""
 for _ in $(seq 1 50); do
-  [ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ] && break
+  for s in "$XDG_RUNTIME_DIR"/wayland-*; do
+    case "$s" in *.lock) continue ;; esac
+    [ -S "$s" ] && WAYLAND_DISPLAY="${s##*/}" && break
+  done
+  [ -n "$WAYLAND_DISPLAY" ] && break
+  kill -0 "$SWAY_PID" 2>/dev/null || break
   sleep 0.2
 done
 
-if [ ! -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]; then
-  echo "[display] sway failed to create $WAYLAND_DISPLAY — check that /dev/dri is mapped" >&2
+if [ -z "$WAYLAND_DISPLAY" ]; then
+  echo "[display] ${STREAM_ID}: sway created no wayland socket in $XDG_RUNTIME_DIR — is /dev/dri mapped and is $(id -un) in the render node's group?" >&2
   kill "$SWAY_PID" 2>/dev/null
   exit 1
 fi
+export WAYLAND_DISPLAY
+echo "[display] ${STREAM_ID}: compositor up on $WAYLAND_DISPLAY, starting Xwayland on $DISPLAY_NUM" >&2
 
 # A hard restart can leave the lock/socket behind, and Xwayland refuses to start
 # on a display that looks taken ("Server is already active for display N"). The

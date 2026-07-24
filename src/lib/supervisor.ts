@@ -191,15 +191,20 @@ function resolutionToChrome(res: string): string {
 
 // Display backend. "wayland" runs sway + rootful Xwayland, which gives the X
 // server DRI3 and therefore real GPU rendering; "xvfb" (default) is the legacy
-// software-only path. See scripts/display.sh.
-export function displayBackend(): "wayland" | "xvfb" {
+// software-only path. Decided per stream (stream.displayBackend), falling back to
+// the DISPLAY_BACKEND env for streams that don't set it. See scripts/display.sh.
+export function displayBackend(stream?: Stream): "wayland" | "xvfb" {
+  const perStream = stream?.displayBackend
+  if (perStream === "wayland" || perStream === "xvfb") return perStream
   return (process.env.DISPLAY_BACKEND ?? "").toLowerCase().trim() === "wayland" ? "wayland" : "xvfb"
 }
 
-// sway refuses to run as root, so the wayland backend needs a dedicated user.
-// Emitted as its own supervisord line (or nothing at all on xvfb).
-function displayUserLine(): string {
-  return displayBackend() === "wayland" ? `user=${process.env.DISPLAY_USER ?? "wl"}\n` : ""
+// sway refuses to run as root, so the wayland backend needs a dedicated user — and
+// so does x11vnc, whose MIT-SHM screen grab is denied cross-uid against a wl-owned
+// Xwayland (BadAccess). Both programs get this line ({{DISPLAY_USER}} in the
+// template); it's empty on xvfb.
+function displayUserLine(stream: Stream): string {
+  return displayBackend(stream) === "wayland" ? `user=${process.env.DISPLAY_USER ?? "wl"}\n` : ""
 }
 
 // normalizes scale: accepts "1280x720" or "1280:720", always saves as "1280:720"
@@ -216,8 +221,8 @@ export function provisionStream(stream: Stream): void {
     STREAM_ID:    stream.id,
     DISPLAY:      stream.display,
     RESOLUTION:   stream.resolution,
-    DISPLAY_BACKEND: displayBackend(),
-    DISPLAY_USER: displayUserLine(),
+    DISPLAY_BACKEND: displayBackend(stream),
+    DISPLAY_USER: displayUserLine(stream),
     CHROME_SIZE:  resolutionToChrome(stream.resolution),
     STREAM_URL:   stream.url,
     DEBUG_PORT:   stream.debugPort,

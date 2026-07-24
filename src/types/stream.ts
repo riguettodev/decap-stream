@@ -29,6 +29,14 @@ export interface Stream {
   // Absent → derived from the legacy `gpu` boolean (true → "hardware", false → "off").
   gpuMode?: "off" | "software" | "hardware"
 
+  // Per-stream display backend. "xvfb" (default) = software-only X; "wayland" =
+  // sway + rootful Xwayland, which gives the X server DRI3 and real GPU rendering
+  // (pair with gpuMode "hardware"). Absent → falls back to the DISPLAY_BACKEND env.
+  // NB: GPU rendering only helps WebGL/GL workloads (maps). It HURTS pages that
+  // decode video into <canvas> (camera portals): VA-API can't touch canvas frames
+  // and GPU compositing of large canvases costs more CPU. Decide per stream.
+  displayBackend?: "xvfb" | "wayland"
+
   zoom?: number  // Chromium --force-device-scale-factor; default 1.0; range 0.25–5.0
 
   autoReload?: boolean
@@ -95,6 +103,7 @@ export const STREAM_DEFAULTS: Omit<StreamCreate, "id" | "name" | "url"> = {
   threads: 0,
   gpu: false,
   gpuMode: "off",
+  displayBackend: "xvfb",
   zoom: 1.0,
   tvFill: false,
   tvAlign: "center",
