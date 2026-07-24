@@ -39,9 +39,26 @@ const NVENC_PRESET: Record<string, string> = {
   slow: "p5", slower: "p6", veryslow: "p7",
 }
 
+const VAAPI_RC_MODES = ["cbr", "vbr", "cqp"]
+
+// rate-control do VAAPI: drivers antigos (i965, gallium) muitas vezes só expõem CQP.
+// O sintoma de escolher um modo não suportado é o encoder abortar com
+// "Driver does not support any RC mode compatible with selected options".
+function vaapiRcMode(): string {
+  const rc = (process.env.FFMPEG_VAAPI_RC ?? "").toLowerCase().trim()
+  return VAAPI_RC_MODES.includes(rc) ? rc : "cbr"
+}
+
+function vaapiQpValue(): number {
+  const qp = parseInt(process.env.FFMPEG_VAAPI_QP ?? "", 10)
+  return Number.isFinite(qp) && qp >= 0 && qp <= 51 ? qp : 24
+}
+
 function buildEncoderFlags(stream: Stream): string {
   const { preset, tune, gop, bitrate, bufsize } = stream
   const hwaccel = (process.env.FFMPEG_HWACCEL ?? "").toLowerCase().trim()
+  const vaapiRc = vaapiRcMode()
+  const vaapiQp = vaapiQpValue()
   const lines: string[] = []
   const ln = (s: string) => lines.push(`    ${s} \\`)
 
@@ -66,9 +83,16 @@ function buildEncoderFlags(stream: Stream): string {
     ln(`-level 3.1`)
     ln(`-g ${gop}`)
     ln(`-keyint_min ${gop}`)
-    ln(`-b:v ${bitrate}`)
-    ln(`-maxrate ${bitrate}`)
-    ln(`-bufsize ${bufsize}`)
+    // nem todo driver VAAPI suporta CBR/VBR; alguns só expõem CQP (ver FFMPEG_VAAPI_RC)
+    if (vaapiRc === "cqp") {
+      ln(`-rc_mode CQP`)
+      ln(`-qp ${vaapiQp}`)
+    } else {
+      ln(`-rc_mode ${vaapiRc.toUpperCase()}`)
+      ln(`-b:v ${bitrate}`)
+      ln(`-maxrate ${bitrate}`)
+      ln(`-bufsize ${bufsize}`)
+    }
   } else if (hwaccel === "qsv") {
     ln(`-c:v h264_qsv`)
     ln(`-preset veryfast`)
@@ -117,20 +141,45 @@ function effectiveGpuMode(stream: Stream): "off" | "software" | "hardware" {
   return stream.gpuMode ?? (stream.gpu ? "hardware" : "off")
 }
 
+// VA-API *decode* is a different path from rendering: it talks to /dev/dri directly
+// and does not need DRI3, so it works even on Xvfb (where all rendering falls back
+// to software). Worth it for pages playing video — a camera portal decoding H.264
+// in software costs a full core. Requires the GPU process to exist, so --disable-gpu
+// is dropped; --disable-gpu-compositing keeps compositing on Skia/CPU instead of
+// paying for llvmpipe.
+function hwDecodeEnabled(): boolean {
+  return (process.env.CHROMIUM_HWDECODE ?? "").toLowerCase().trim() === "true"
+}
+
+const HWDECODE_FLAGS =
+  "    --disable-gpu-compositing \\\n" +
+  "    --ignore-gpu-blocklist \\\n" +
+  "    --enable-features=VaapiVideoDecoder,VaapiVideoDecodeLinuxGL \\\n"
+
 function buildGpuFlags(stream: Stream): string {
-  switch (effectiveGpuMode(stream)) {
+  const mode = effectiveGpuMode(stream)
+  const decode = hwDecodeEnabled() ? HWDECODE_FLAGS : ""
+  switch (mode) {
     case "hardware":
-      return ""
+      // Only actually hardware under DISPLAY_BACKEND=wayland: on Xvfb there is no
+      // DRI3, so Chromium silently falls back to llvmpipe (software) instead.
+      return (
+        "    --ignore-gpu-blocklist \\\n" +
+        "    --enable-gpu-rasterization \\\n" +
+        decode
+      )
     case "software":
       return (
         "    --use-gl=angle \\\n" +
         "    --use-angle=swiftshader \\\n" +
         "    --enable-unsafe-swiftshader \\\n" +
-        "    --ignore-gpu-blocklist \\\n"
+        "    --ignore-gpu-blocklist \\\n" +
+        decode
       )
     case "off":
     default:
-      return "    --disable-gpu \\\n"
+      // --disable-gpu kills the GPU process, and with it VA-API decode
+      return decode || "    --disable-gpu \\\n"
   }
 }
 
@@ -138,6 +187,19 @@ function buildGpuFlags(stream: Stream): string {
 // converts "1920x1080" → "1920,1080" for Chrome --window-size flag
 function resolutionToChrome(res: string): string {
   return res.replace("x", ",")
+}
+
+// Display backend. "wayland" runs sway + rootful Xwayland, which gives the X
+// server DRI3 and therefore real GPU rendering; "xvfb" (default) is the legacy
+// software-only path. See scripts/display.sh.
+export function displayBackend(): "wayland" | "xvfb" {
+  return (process.env.DISPLAY_BACKEND ?? "").toLowerCase().trim() === "wayland" ? "wayland" : "xvfb"
+}
+
+// sway refuses to run as root, so the wayland backend needs a dedicated user.
+// Emitted as its own supervisord line (or nothing at all on xvfb).
+function displayUserLine(): string {
+  return displayBackend() === "wayland" ? `user=${process.env.DISPLAY_USER ?? "wl"}\n` : ""
 }
 
 // normalizes scale: accepts "1280x720" or "1280:720", always saves as "1280:720"
@@ -154,6 +216,8 @@ export function provisionStream(stream: Stream): void {
     STREAM_ID:    stream.id,
     DISPLAY:      stream.display,
     RESOLUTION:   stream.resolution,
+    DISPLAY_BACKEND: displayBackend(),
+    DISPLAY_USER: displayUserLine(),
     CHROME_SIZE:  resolutionToChrome(stream.resolution),
     STREAM_URL:   stream.url,
     DEBUG_PORT:   stream.debugPort,
@@ -207,7 +271,7 @@ export function recreateStream(id: string): void {
 export function startStream(id: string): void {
   const programs = ["xvfb", "chromium", "autologin", "applyzoom", "autoreload", "x11vnc", "ffmpeg"]
   for (const p of programs) supervisorctl(`start ${p}-${id}`)
-  captureThumb(id, 60)
+  captureThumb(id, 60, { force: true })
 }
 
 export function stopStream(id: string): void {
@@ -262,8 +326,17 @@ export function removeStream(id: string): void {
   removeStreamExtensions(id)
 }
 
-export function captureThumb(streamId: string, delay = 60): void {
+// Guard against thumbnail stampede: the tmp file only shows up *after* the sleep,
+// so the on-disk check alone lets every request inside that window spawn another
+// 1080p x11grab. Track attempts in-process instead.
+const _lastThumbAttempt = new Map<string, number>()
+const THUMB_MIN_INTERVAL = 90_000
+
+export function captureThumb(streamId: string, delay = 60, opts: { force?: boolean } = {}): void {
   if (IS_DEV) { console.log(`[thumb mock] captureThumb ${streamId} delay=${delay}s`); return }
+  const now = Date.now()
+  if (!opts.force && now - (_lastThumbAttempt.get(streamId) ?? 0) < THUMB_MIN_INTERVAL) return
+  _lastThumbAttempt.set(streamId, now)
   const stream = getStream(streamId)
   if (!stream) return
   const thumbPath = path.join(STREAMS_DIR, streamId, "thumb.jpg")

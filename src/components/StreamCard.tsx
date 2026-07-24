@@ -120,11 +120,19 @@ export function StreamCard({ stream, status, localStatus, cardSize = "md", onRef
     }
   }, [menuOpen])
 
+  // Exponential backoff: a stream whose thumb never lands (display down, capture
+  // failing) would otherwise re-request every 15s forever, and each miss asks the
+  // server for a fresh 1080p x11grab.
+  const thumbRetries = useRef(0)
   useEffect(() => {
-    if (!thumbError) return
-    const interval = setInterval(() => setThumbKey((k) => k + 1), 15000)
-    return () => clearInterval(interval)
-  }, [thumbError])
+    if (!thumbError) { thumbRetries.current = 0; return }
+    const delay = Math.min(15000 * 2 ** thumbRetries.current, 300000)
+    const timer = setTimeout(() => {
+      thumbRetries.current += 1
+      setThumbKey((k) => k + 1)
+    }, delay)
+    return () => clearTimeout(timer)
+  }, [thumbError, thumbKey])
 
   function navigate(url: string) {
     if (globalPrefs.newTab) window.open(url, "_blank")

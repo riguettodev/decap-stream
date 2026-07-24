@@ -31,6 +31,6 @@ export async function GET(_req: Request, { params }: Ctx) {
 export async function POST(_req: Request, { params }: Ctx) {
   const { id } = await params
   if (!getStream(id)) return NextResponse.json({ error: "not found" }, { status: 404 })
-  captureThumb(id, 5)
+  captureThumb(id, 5, { force: true })   // explicit user action — bypass the poll throttle
   return NextResponse.json({ ok: true })
 }

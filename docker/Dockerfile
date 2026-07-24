@@ -27,7 +27,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && apt-get install -y --no-install-recommends \
         xvfb x11vnc novnc websockify \
         ffmpeg supervisor xdotool tzdata \
-        mesa-va-drivers intel-media-va-driver \
+        mesa-va-drivers intel-media-va-driver i965-va-driver vainfo \
+        sway xwayland mesa-utils \
         chromium \
         curl gnupg \
     && ln -sf /usr/share/zoneinfo/${TZ} /etc/localtime \
@@ -70,6 +71,11 @@ COPY scripts/ /opt/scripts/
 COPY docker/server.mjs /opt/server.mjs
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /opt/scripts/*.sh /entrypoint.sh
+
+# Unprivileged user for the wayland display backend — sway refuses to run as root.
+# Group membership for /dev/dri is resolved at runtime by the entrypoint, since the
+# render node's GID differs per host.
+RUN useradd -m -s /usr/sbin/nologin wl
 
 EXPOSE 3000 1935 8888 6080
 

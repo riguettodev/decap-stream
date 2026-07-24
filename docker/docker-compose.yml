@@ -4,37 +4,40 @@ services:
     container_name: decap-stream
     restart: unless-stopped
     shm_size: "1gb"
-    security_opt:
-      - seccomp:unconfined
-    # gpus: all                 # Uncomment for NVIDIA (nvenc) — requires nvidia-container-toolkit on host
+    security_opt: [seccomp:unconfined]
+    # gpus: all                     # NVIDIA (nvenc) — requer nvidia-container-toolkit
     # devices:
-    #   - /dev/dri:/dev/dri     # Uncomment for Intel/AMD (vaapi or qsv)
+    #   - /dev/dri:/dev/dri         # Intel/AMD — vaapi, qsv, DISPLAY_BACKEND, CHROMIUM_HWDECODE
     environment:
       TZ: America/Sao_Paulo
-      # AUTH_USER: admin              # If set (with AUTH_PASS), enables login
+      DEFAULT_PURE_MODE: false
+      DEFAULT_OPEN_NEW_TAB: false
+      DEFAULT_RELOAD_CLIENT: false
+      DEFAULT_RELOAD_CLIENT_TIME: 2
+      DEFAULT_TV_LAYOUT: false
+      DEFAULT_TV_ROWS: 3
+      DEFAULT_TV_COLS: 4
+      DEFAULT_TV_CLICK_ACTION: hls
+      # AUTH_USER: admin
       # AUTH_PASS: secure_password
-      # SESSION_MAX_AGE_DAYS: 365     # Login cookie lifetime in days (default 365)
-      DEFAULT_PURE_MODE: false      # Pure mode: raw .m3u8 / minimal player (no UI chrome)
-      DEFAULT_OPEN_NEW_TAB: false   # Open player buttons in a new tab
-      DEFAULT_RELOAD_CLIENT: false  # Auto-reload the client player page
-      DEFAULT_RELOAD_CLIENT_TIME: 2 # Client auto-reload interval in minutes
-      DEFAULT_TV_LAYOUT: false      # Activate TV Layout by default
-      DEFAULT_TV_ROWS: 3            # Default Rows for TV Layout
-      DEFAULT_TV_COLS: 4            # Default Columns for TV Layout
-      DEFAULT_TV_CLICK_ACTION: hls  # "hls" / "html" / "vnc"
-      # LOGIN_CHECK_INTERVAL: 60      # Seconds between auto-login session checks (default: 60)
-      # LOGIN_MAX_RETRIES: 5          # Consecutive failed login attempts before giving up; 0 = unlimited (default: 5)
-      # FFMPEG_HWACCEL: nvenc         # GPU encoding: nvenc (NVIDIA), vaapi / qsv (Intel/AMD)
-      # LD_LIBRARY_PATH: /usr/lib/wsl/lib  # WSL2 + nvenc only
+      # SESSION_MAX_AGE_DAYS: 365   # Cookie de login, em dias (default 365)
+      # LOGIN_CHECK_INTERVAL: 60    # Segundos entre checagens de sessão (default 60)
+      # LOGIN_MAX_RETRIES: 5        # Tentativas consecutivas de login; 0 = ilimitado
+      # DISPLAY_BACKEND: wayland    # sway + Xwayland = render na GPU (default: xvfb, software)
+      # CHROMIUM_HWDECODE: "true"   # Decode de vídeo por VA-API (ganho em páginas com vídeo)
+      # FFMPEG_HWACCEL: nvenc       # Encoding: nvenc / vaapi / qsv
+      # FFMPEG_VAAPI_RC: cbr        # vaapi rate control: cbr / vbr / cqp
+      # FFMPEG_VAAPI_QP: 24         # Quantizer para FFMPEG_VAAPI_RC=cqp (0-51)
+      # LD_LIBRARY_PATH: /usr/lib/wsl/lib   # WSL2 + nvenc
     ports:
-      - "3000:3000"             # Web UI — main entry point
-      - "127.0.0.1:6080:6080"   # noVNC — localhost only; expose via tunnel/VPN for remote access
-      # - "1935:1935"           # RTMP — expose only for external ingest (e.g. OBS)
-      # - "8888:8888"           # HLS  — internal only; proxied through Next.js at /api/hls/
+      - "3000:3000"             # Web UI — único ponto de entrada
+      - "127.0.0.1:6080:6080"   # noVNC — localhost only
+      # - "1935:1935"           # RTMP — só para ingest externo
+      # - "8888:8888"           # HLS — normalmente proxiado em /api/hls/
     volumes:
-      - streams:/app/data/streams   # Persistent: streams.json, chrome profiles, thumbnails
-      # - ./logs:/app/data/logs     # Optional: mount for external log access
-      # - /usr/lib/wsl/lib:/usr/lib/wsl/lib:ro  # WSL2 + nvenc: exposes libnvidia-encode.so.1
+      - streams:/app/data/streams
+      # - ./logs:/app/data/logs
+      # - /usr/lib/wsl/lib:/usr/lib/wsl/lib:ro   # WSL2 + nvenc
 
 volumes:
   streams:

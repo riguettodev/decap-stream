@@ -28,20 +28,46 @@ function effectiveGpuMode(stream) {
   return stream.gpuMode ?? (stream.gpu ? 'hardware' : 'off')
 }
 
+// ver comentário em src/lib/supervisor.ts — sway + Xwayland dá DRI3 ao X
+function displayBackend() {
+  return (process.env.DISPLAY_BACKEND ?? '').toLowerCase().trim() === 'wayland' ? 'wayland' : 'xvfb'
+}
+
+function displayUserLine() {
+  return displayBackend() === 'wayland' ? `user=${process.env.DISPLAY_USER ?? 'wl'}\n` : ''
+}
+
+// ver comentário em src/lib/supervisor.ts — decode VA-API não depende de DRI3
+function hwDecodeEnabled() {
+  return (process.env.CHROMIUM_HWDECODE ?? '').toLowerCase().trim() === 'true'
+}
+
+const HWDECODE_FLAGS =
+  '    --disable-gpu-compositing \\\n' +
+  '    --ignore-gpu-blocklist \\\n' +
+  '    --enable-features=VaapiVideoDecoder,VaapiVideoDecodeLinuxGL \\\n'
+
 function buildGpuFlags(stream) {
+  const decode = hwDecodeEnabled() ? HWDECODE_FLAGS : ''
   switch (effectiveGpuMode(stream)) {
     case 'hardware':
-      return ''
+      // só é hardware de verdade com DISPLAY_BACKEND=wayland (Xvfb não tem DRI3)
+      return (
+        '    --ignore-gpu-blocklist \\\n' +
+        '    --enable-gpu-rasterization \\\n' +
+        decode
+      )
     case 'software':
       return (
         '    --use-gl=angle \\\n' +
         '    --use-angle=swiftshader \\\n' +
         '    --enable-unsafe-swiftshader \\\n' +
-        '    --ignore-gpu-blocklist \\\n'
+        '    --ignore-gpu-blocklist \\\n' +
+        decode
       )
     case 'off':
     default:
-      return '    --disable-gpu \\\n'
+      return decode || '    --disable-gpu \\\n'
   }
 }
 
@@ -101,9 +127,26 @@ const NVENC_PRESET = {
   slow: 'p5', slower: 'p6', veryslow: 'p7',
 }
 
+const VAAPI_RC_MODES = ['cbr', 'vbr', 'cqp']
+
+// rate-control do VAAPI: drivers antigos (i965, gallium) muitas vezes só expõem CQP.
+// O sintoma de escolher um modo não suportado é o encoder abortar com
+// "Driver does not support any RC mode compatible with selected options".
+function vaapiRcMode() {
+  const rc = (process.env.FFMPEG_VAAPI_RC ?? '').toLowerCase().trim()
+  return VAAPI_RC_MODES.includes(rc) ? rc : 'cbr'
+}
+
+function vaapiQpValue() {
+  const qp = parseInt(process.env.FFMPEG_VAAPI_QP ?? '', 10)
+  return Number.isFinite(qp) && qp >= 0 && qp <= 51 ? qp : 24
+}
+
 function buildEncoderFlags(stream) {
   const { preset, tune, gop, bitrate, bufsize } = stream
   const hwaccel = (process.env.FFMPEG_HWACCEL ?? '').toLowerCase().trim()
+  const vaapiRc = vaapiRcMode()
+  const vaapiQp = vaapiQpValue()
   const lines = []
   const ln = (s) => lines.push(`    ${s} \\`)
 
@@ -128,9 +171,16 @@ function buildEncoderFlags(stream) {
     ln(`-level 3.1`)
     ln(`-g ${gop}`)
     ln(`-keyint_min ${gop}`)
-    ln(`-b:v ${bitrate}`)
-    ln(`-maxrate ${bitrate}`)
-    ln(`-bufsize ${bufsize}`)
+    // nem todo driver VAAPI suporta CBR/VBR; alguns só expõem CQP (ver FFMPEG_VAAPI_RC)
+    if (vaapiRc === 'cqp') {
+      ln(`-rc_mode CQP`)
+      ln(`-qp ${vaapiQp}`)
+    } else {
+      ln(`-rc_mode ${vaapiRc.toUpperCase()}`)
+      ln(`-b:v ${bitrate}`)
+      ln(`-maxrate ${bitrate}`)
+      ln(`-bufsize ${bufsize}`)
+    }
   } else if (hwaccel === 'qsv') {
     ln(`-c:v h264_qsv`)
     ln(`-preset veryfast`)
@@ -170,6 +220,8 @@ for (const stream of streams) {
     STREAM_ID:    stream.id,
     DISPLAY:      stream.display,
     RESOLUTION:   stream.resolution,
+    DISPLAY_BACKEND: displayBackend(),
+    DISPLAY_USER: displayUserLine(),
     CHROME_SIZE:  stream.resolution.replace('x', ','),
     STREAM_URL:   stream.url,
     DEBUG_PORT:   stream.debugPort,
