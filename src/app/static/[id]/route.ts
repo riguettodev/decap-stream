@@ -114,13 +114,18 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
 
     updateMuteIcon(false);
 
-    // Try direct MediaMTX first (lower latency, avoids proxy buffering).
-    // Falls back to proxy if port 8888 is not reachable from this client.
-    var ctrl=new AbortController();
-    var fetchTimer=setTimeout(function(){ctrl.abort();},2000);
-    fetch(directUrl,{method:'HEAD',signal:ctrl.signal})
-      .then(function(){clearTimeout(fetchTimer);startHls(directUrl);})
-      .catch(function(){clearTimeout(fetchTimer);startHls(proxyUrl);});
+    // Over HTTPS the http://<host>:8888 direct URL is mixed content (browser blocks
+    // it), and in production port 8888 isn't exposed anyway — go straight through the
+    // HTTPS proxy. Only try the direct MediaMTX URL (lower latency) on plain HTTP.
+    if(window.location.protocol==='https:'){
+      startHls(proxyUrl);
+    }else{
+      var ctrl=new AbortController();
+      var fetchTimer=setTimeout(function(){ctrl.abort();},2000);
+      fetch(directUrl,{method:'HEAD',signal:ctrl.signal})
+        .then(function(){clearTimeout(fetchTimer);startHls(directUrl);})
+        .catch(function(){clearTimeout(fetchTimer);startHls(proxyUrl);});
+    }
 
     var last=0,started=false;
     setInterval(function(){

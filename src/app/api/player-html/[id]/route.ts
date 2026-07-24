@@ -61,11 +61,18 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
       last=v.currentTime;
     },10000);
 
-    var ctrl=new AbortController();
-    var fetchTimer=setTimeout(function(){ctrl.abort();},2000);
-    fetch(directUrl,{method:'HEAD',signal:ctrl.signal})
-      .then(function(){clearTimeout(fetchTimer);load(directUrl);})
-      .catch(function(){clearTimeout(fetchTimer);load(proxyUrl);});
+    // Over HTTPS the http://<host>:8888 direct URL is mixed content (browser blocks
+    // it), and in production port 8888 isn't exposed anyway — go straight through the
+    // HTTPS proxy. Only try the direct MediaMTX URL (lower latency) on plain HTTP.
+    if(window.location.protocol==='https:'){
+      load(proxyUrl);
+    }else{
+      var ctrl=new AbortController();
+      var fetchTimer=setTimeout(function(){ctrl.abort();},2000);
+      fetch(directUrl,{method:'HEAD',signal:ctrl.signal})
+        .then(function(){clearTimeout(fetchTimer);load(directUrl);})
+        .catch(function(){clearTimeout(fetchTimer);load(proxyUrl);});
+    }
   </script>
 </body>
 </html>`
