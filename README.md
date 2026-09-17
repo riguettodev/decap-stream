@@ -204,7 +204,8 @@ Each stream gets a slug ID you define (e.g. `grafana-prod`):
 - `streams.json` flat file + one directory per stream under `/app/data/streams/{id}/`
 - Each stream generates a `stream.conf` from a template; Supervisord picks it up via `[include]`
 - Display number `:n` is auto-allocated; VNC port = `5900+n`, debug port = `9221+n`
-- On the `gpu` display backend the program names stay the same: `xvfb-{id}` runs sway, `x11vnc-{id}` runs wayvnc, `ffmpeg-{id}` runs `capture-gpu.sh`; zoom keys go through wayvnc and autologin types through CDP (there is no X server for `xdotool`)
+- On the `gpu` display backend the program names stay the same: `xvfb-{id}` runs sway, `x11vnc-{id}` runs `vnc-gpu.sh` (wayvnc), `ffmpeg-{id}` runs `capture-gpu.sh`; zoom keys go through wayvnc and autologin types through CDP (there is no X server for `xdotool`)
+- The `gpu` backend's display refreshes at the stream's FPS (5 Hz on a 5 fps dashboard), which would make VNC update in 200 ms steps; while at least one VNC client is connected, `vnc-gpu.sh` raises that stream's refresh to `VNC_REFRESH_HZ` and restores it when the last client leaves — the published stream keeps its FPS
 - `/api/hls/*` is answered by a plain Node proxy in `docker/server.mjs` before the request reaches Next.js (`HLS_FAST_PROXY=false` sends it back through the Next.js route)
 
 ## GPU pipeline
@@ -233,6 +234,8 @@ The `gpu` backend also moves video decoding to the GPU, so the iGPU's media engi
 | `VAAPI_DEVICE` | `/dev/dri/renderD128` | Render node used by sway, wf-recorder and ffmpeg VA-API |
 | `FFMPEG_VAAPI_CSC` | `auto` | `xvfb`/`wayland` + `FFMPEG_HWACCEL=vaapi`: where RGB→NV12 happens. `gpu` = `scale_vaapi`, `cpu` = swscale, `auto` = GPU when the driver exposes `VAEntrypointVideoProc` |
 | `FFMPEG_VAAPI_RC` / `FFMPEG_VAAPI_QP` | `cbr` / `24` | VA-API rate control, used by both ffmpeg and wf-recorder |
+| `VNC_REFRESH_HZ` | `30` | `gpu` backend: display refresh of a stream while a VNC client is connected (`0` keeps the stream's FPS, VNC stays choppy) |
+| `WAYVNC_GPU` | `true` | `gpu` backend: VNC captured and encoded as H.264 on the GPU (~10× less bandwidth to the browser); `false` encodes on the CPU |
 | `HLS_FAST_PROXY` | `true` | `false` serves `/api/hls/*` through the Next.js route instead of the Node proxy |
 | `MTX_*` | | Any MediaMTX setting, e.g. `MTX_HLSVARIANT=lowLatency` (default is `mpegts`, 2 s segments) or `MTX_LOGLEVEL=debug` |
 

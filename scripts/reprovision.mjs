@@ -270,9 +270,7 @@ function chromiumPrelude(stream) {
 }
 
 function buildVncCommand(stream) {
-  if (displayBackend(stream) === 'gpu') {
-    return `bash -c ". /opt/scripts/wlenv.sh && XDG_CONFIG_HOME=$XDG_RUNTIME_DIR exec wayvnc 0.0.0.0 ${stream.vncPort}"`
-  }
+  if (displayBackend(stream) === 'gpu') return '/opt/scripts/vnc-gpu.sh'
   return `bash -c "while [ ! -e /tmp/.X11-unix/X$(echo $DISPLAY | cut -d: -f2 | cut -d. -f1) ]; do sleep 0.2; done; exec x11vnc -nopw -listen 0.0.0.0 -rfbport ${stream.vncPort} -xkb -forever -shared -threads"`
 }
 

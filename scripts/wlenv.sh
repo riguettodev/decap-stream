@@ -5,7 +5,8 @@
 # display.sh owns the compositor and writes the name of the socket sway actually
 # created to $XDG_RUNTIME_DIR/wayland-display (sway ignores WAYLAND_DISPLAY and
 # picks the first free wayland-N itself). This waits for that file and for the
-# socket, then exports XDG_RUNTIME_DIR + WAYLAND_DISPLAY.
+# socket, then exports XDG_RUNTIME_DIR + WAYLAND_DISPLAY (and SWAYSOCK, when
+# display.sh published sway's IPC socket in $XDG_RUNTIME_DIR/sway-socket).
 #
 # Required env: STREAM_ID. Returns non-zero after ~60s without a compositor, so
 # supervisord restarts the caller instead of it hanging forever.
@@ -27,3 +28,8 @@ if [ -z "$WAYLAND_DISPLAY" ]; then
   return 1 2>/dev/null || exit 1
 fi
 export WAYLAND_DISPLAY
+
+if [ -s "$XDG_RUNTIME_DIR/sway-socket" ]; then
+  SWAYSOCK="$(cat "$XDG_RUNTIME_DIR/sway-socket")"
+  [ -S "$SWAYSOCK" ] && export SWAYSOCK || unset SWAYSOCK
+fi

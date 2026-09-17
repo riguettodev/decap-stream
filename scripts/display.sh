@@ -58,10 +58,10 @@ mkdir -p "$XDG_CACHE_HOME"
 
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
-# Clear any stale compositor sockets (and the published socket name) from a previous
+# Clear any stale compositor sockets (and the published socket names) from a previous
 # crashed run in this stream's private runtime dir, so neither the discovery below
 # nor wlenv.sh can latch onto a dead socket.
-rm -f "$XDG_RUNTIME_DIR"/wayland-*
+rm -f "$XDG_RUNTIME_DIR"/wayland-* "$XDG_RUNTIME_DIR"/sway-ipc.* "$XDG_RUNTIME_DIR/sway-socket"
 
 SWAY_CFG="$XDG_RUNTIME_DIR/sway.conf"
 if [ "$BACKEND" = "gpu" ]; then
@@ -91,7 +91,7 @@ SWAY_PID=$!
 XWAYLAND_PID=""
 
 cleanup() {
-  rm -f "$XDG_RUNTIME_DIR/wayland-display"
+  rm -f "$XDG_RUNTIME_DIR/wayland-display" "$XDG_RUNTIME_DIR/sway-socket"
   [ -n "$XWAYLAND_PID" ] && kill "$XWAYLAND_PID" 2>/dev/null
   kill "$SWAY_PID" 2>/dev/null
   wait "$SWAY_PID" 2>/dev/null
@@ -121,6 +121,12 @@ fi
 export WAYLAND_DISPLAY
 # publish the name for the other processes of this stream (see wlenv.sh)
 echo "$WAYLAND_DISPLAY" > "$XDG_RUNTIME_DIR/wayland-display"
+
+# and sway's IPC socket (sway-ipc.<uid>.<pid>.sock), used by vnc-gpu.sh to change the
+# output refresh while someone is on VNC
+SWAY_IPC="$XDG_RUNTIME_DIR/sway-ipc.$(id -u).${SWAY_PID}.sock"
+for _ in $(seq 1 25); do [ -S "$SWAY_IPC" ] && break; sleep 0.2; done
+[ -S "$SWAY_IPC" ] && echo "$SWAY_IPC" > "$XDG_RUNTIME_DIR/sway-socket"
 
 if [ "$BACKEND" = "gpu" ]; then
   echo "[display] ${STREAM_ID}: compositor up on $WAYLAND_DISPLAY (${RESOLUTION}@${REFRESH}Hz, no X server)" >&2

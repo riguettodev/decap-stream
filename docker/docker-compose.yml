@@ -35,6 +35,8 @@ services:
       # FFMPEG_VAAPI_RC: cbr        # vaapi rate control: cbr / vbr / cqp (vale pro backend gpu também)
       # FFMPEG_VAAPI_QP: 24         # Quantizer para FFMPEG_VAAPI_RC=cqp (0-51)
       # VAAPI_DEVICE: /dev/dri/renderD128   # render node da GPU (sway, wf-recorder, ffmpeg)
+      # VNC_REFRESH_HZ: 30          # backend gpu: refresh da tela enquanto alguém está no VNC (0 = não muda, VNC picotado)
+      # WAYVNC_GPU: "false"         # backend gpu: VNC em H.264 na GPU (default true, ~10x menos banda); false = CPU
       # HLS_FAST_PROXY: "false"     # volta o /api/hls pro Next.js (default: proxy Node direto, menos CPU)
       # MTX_HLSVARIANT: lowLatency  # qualquer config do MediaMTX via MTX_*; lowLatency = ~1s de atraso, bem mais requisições
       # LD_LIBRARY_PATH: /usr/lib/wsl/lib   # WSL2 + nvenc

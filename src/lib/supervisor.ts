@@ -276,14 +276,10 @@ function chromiumPrelude(stream: Stream): string {
   return displayBackend(stream) === "gpu" ? ". /opt/scripts/wlenv.sh && " : ""
 }
 
-// {{VNC_COMMAND}}: x11vnc on the X backends, wayvnc on gpu (no X server there).
-// wayvnc runs as the display user but supervisord leaves HOME=/root, and wayvnc
-// exits on "Permission denied" reading /root/.config — point its config lookup at
-// the stream's runtime dir, where no config exists (defaults, no auth, like x11vnc).
+// {{VNC_COMMAND}}: x11vnc on the X backends; on gpu (no X server) vnc-gpu.sh runs
+// wayvnc and raises the output refresh while a VNC client is connected — see there.
 function buildVncCommand(stream: Stream): string {
-  if (displayBackend(stream) === "gpu") {
-    return `bash -c ". /opt/scripts/wlenv.sh && XDG_CONFIG_HOME=$XDG_RUNTIME_DIR exec wayvnc 0.0.0.0 ${stream.vncPort}"`
-  }
+  if (displayBackend(stream) === "gpu") return "/opt/scripts/vnc-gpu.sh"
   return `bash -c "while [ ! -e /tmp/.X11-unix/X$(echo $DISPLAY | cut -d: -f2 | cut -d. -f1) ]; do sleep 0.2; done; exec x11vnc -nopw -listen 0.0.0.0 -rfbport ${stream.vncPort} -xkb -forever -shared -threads"`
 }
 
