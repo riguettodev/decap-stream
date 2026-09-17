@@ -1,7 +1,7 @@
 #!/bin/bash
 # Provides the virtual display for one stream.
 #
-# Two backends, selected by DISPLAY_BACKEND:
+# Three backends, selected by DISPLAY_BACKEND:
 #
 #   xvfb     (default) — Xvfb, pure software. No DRI3, so Chromium always
 #                        rasterizes on the CPU (llvmpipe/SwiftShader).
@@ -9,10 +9,15 @@
 #                        Xwayland is a full X server *with DRI3*, so Chromium,
 #                        x11grab and x11vnc keep using DISPLAY=:N exactly as
 #                        before, but rendering goes to the real GPU.
+#   gpu                — sway alone, no X server. Chromium runs as a native Wayland
+#                        client, capture-gpu.sh grabs the compositor output as a
+#                        dmabuf and encodes it with VAAPI, wayvnc serves VNC. The
+#                        output refresh rate is the stream's FPS: Chromium paces its
+#                        frames to it and the capture takes exactly FPS frames/s.
 #
 # Required env: DISPLAY_NUM (":5"), RESOLUTION ("1920x1080"), STREAM_ID.
-# The wayland backend additionally needs /dev/dri and must NOT run as root
-# (sway refuses to start as root).
+# wayland/gpu additionally need /dev/dri and must NOT run as root (sway refuses to
+# start as root). gpu also reads FPS and VAAPI_DEVICE.
 
 set -u
 
@@ -23,11 +28,11 @@ BACKEND="$(echo "${DISPLAY_BACKEND:-xvfb}" | tr '[:upper:]' '[:lower:]')"
 
 DISPLAY_N="${DISPLAY_NUM#:}"
 
-if [ "$BACKEND" != "wayland" ]; then
+if [ "$BACKEND" != "wayland" ] && [ "$BACKEND" != "gpu" ]; then
   exec Xvfb "$DISPLAY_NUM" -screen 0 "${RESOLUTION}x24" -ac
 fi
 
-# --- wayland backend -------------------------------------------------------
+# --- wayland / gpu backends --------------------------------------------------
 
 export XDG_RUNTIME_DIR="/tmp/xdg-${STREAM_ID}"
 # NB: WAYLAND_DISPLAY is deliberately NOT set here. sway creates its socket with
@@ -40,6 +45,9 @@ export WLR_BACKENDS=headless
 export WLR_RENDERER=gles2
 # wlroots needs no seat manager on the headless backend
 export LIBSEAT_BACKEND=noop
+# render on the same GPU the encoder uses — wf-recorder only captures dmabufs
+# (zero-copy) when the compositor and the VAAPI device match
+export WLR_RENDER_DRM_DEVICE="${VAAPI_DEVICE:-/dev/dri/renderD128}"
 # supervisord keeps its own HOME (/root) even with user=, so the unprivileged user
 # inherits a directory it cannot write — fontconfig then fails with "No writable
 # cache directories". Resolve the real home of whoever we are running as.
@@ -50,25 +58,41 @@ mkdir -p "$XDG_CACHE_HOME"
 
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
-# Clear any stale compositor sockets from a previous crashed run in this stream's
-# private runtime dir, so the discovery below cannot latch onto a dead socket.
+# Clear any stale compositor sockets (and the published socket name) from a previous
+# crashed run in this stream's private runtime dir, so neither the discovery below
+# nor wlenv.sh can latch onto a dead socket.
 rm -f "$XDG_RUNTIME_DIR"/wayland-*
 
 SWAY_CFG="$XDG_RUNTIME_DIR/sway.conf"
-{
-  echo "output HEADLESS-1 mode ${RESOLUTION}@60Hz"
-  # MUST stay disabled: sway would otherwise launch its own Xwayland on the first
-  # free display number, which then collides with the rootful one we start below
-  # ("Server is already active for display N"). We want exactly one X server, on
-  # the display number this stream owns.
-  echo "xwayland disable"
-} > "$SWAY_CFG"
+if [ "$BACKEND" = "gpu" ]; then
+  REFRESH="${FPS:-30}"
+  case "$REFRESH" in ''|*[!0-9.]*) REFRESH=30 ;; esac
+  {
+    echo "output HEADLESS-1 mode ${RESOLUTION}@${REFRESH}Hz"
+    echo "xwayland disable"
+    # the capture grabs the whole output: no borders, and Chromium always fullscreen
+    echo "default_border none"
+    echo "default_floating_border none"
+    echo 'for_window [app_id=".*"] fullscreen enable'
+  } > "$SWAY_CFG"
+else
+  {
+    echo "output HEADLESS-1 mode ${RESOLUTION}@60Hz"
+    # MUST stay disabled: sway would otherwise launch its own Xwayland on the first
+    # free display number, which then collides with the rootful one we start below
+    # ("Server is already active for display N"). We want exactly one X server, on
+    # the display number this stream owns.
+    echo "xwayland disable"
+  } > "$SWAY_CFG"
+fi
 
 sway -c "$SWAY_CFG" &
 SWAY_PID=$!
+XWAYLAND_PID=""
 
 cleanup() {
-  kill "$XWAYLAND_PID" 2>/dev/null
+  rm -f "$XDG_RUNTIME_DIR/wayland-display"
+  [ -n "$XWAYLAND_PID" ] && kill "$XWAYLAND_PID" 2>/dev/null
   kill "$SWAY_PID" 2>/dev/null
   wait "$SWAY_PID" 2>/dev/null
   exit 0
@@ -95,6 +119,15 @@ if [ -z "$WAYLAND_DISPLAY" ]; then
   exit 1
 fi
 export WAYLAND_DISPLAY
+# publish the name for the other processes of this stream (see wlenv.sh)
+echo "$WAYLAND_DISPLAY" > "$XDG_RUNTIME_DIR/wayland-display"
+
+if [ "$BACKEND" = "gpu" ]; then
+  echo "[display] ${STREAM_ID}: compositor up on $WAYLAND_DISPLAY (${RESOLUTION}@${REFRESH}Hz, no X server)" >&2
+  wait "$SWAY_PID"
+  cleanup
+fi
+
 echo "[display] ${STREAM_ID}: compositor up on $WAYLAND_DISPLAY, starting Xwayland on $DISPLAY_NUM" >&2
 
 # A hard restart can leave the lock/socket behind, and Xwayland refuses to start
@@ -104,9 +137,9 @@ rm -f "/tmp/.X${DISPLAY_N}-lock" "/tmp/.X11-unix/X${DISPLAY_N}"
 
 # Rootful Xwayland: a complete X server (with DRI3) living inside the compositor.
 # -ac keeps it open to the other stream processes, which still run as root.
-# The screen size comes from the compositor output (see `output ... mode` above) —
-# Xwayland 22.1 has no -geometry. x11grab captures a fixed -video_size, so if the
-# screen ever comes up at another size the ffmpeg of this stream is what breaks.
+# The screen size comes from the compositor output (see `output ... mode` above).
+# x11grab captures a fixed -video_size, so if the screen ever comes up at another
+# size the ffmpeg of this stream is what breaks.
 Xwayland "$DISPLAY_NUM" -ac -noreset &
 XWAYLAND_PID=$!
 

@@ -4,6 +4,8 @@
 
 ### Added
 
+- **Full GPU mode** — on servers with an Intel or AMD GPU, streams can be rendered, captured and encoded entirely on the GPU, using several times less CPU.
+- **Full GPU mode for every stream at once** — set `GPU_PIPELINE=full` on the container, or pick it per stream under Advanced → Display backend.
 - **Per-stream Chromium extensions** — load unpacked extensions (ZIP upload, slug-sanitized into `/app/data/extensions/{streamId}/`) and/or Chrome Web Store IDs via `ExtensionInstallForcelist` managed policies; "Extensions..." button in the card menu opens a modal with two tabs (Web Store IDs, Upload) and an Apply & Restart action that bounces only Chromium + autologin.
 - **Per-stream Chromium page zoom** — `zoom` field (one of 17 discrete Chromium steps from 25 % to 500 %) applied as real page zoom (Ctrl+/Ctrl-) by an `applyzoom-{id}` supervisor process that uses `xdotool` to send keyboard shortcuts to the stream's window. No Chromium restart required when changing.
 - **Multiple TV Wall presets** — TV Layout grids are now named presets (`rows`, `cols`, `clickAction`, `slots[]`) stored server-side in `tv-presets.json`. Header dropdown lets you switch/create/edit/reorder presets; `/api/tv-wall?preset=<id>` opens the wall for a given preset.
@@ -14,6 +16,10 @@
 
 ### Changed
 
+- **TV walls use much less server CPU.**
+- **Streams play about 5 seconds behind live** — set `MTX_HLSVARIANT=lowLatency` for ~1 second at a higher CPU cost.
+- **VA-API encoding uses less CPU** on Intel and AMD GPUs.
+- **The container image is based on Debian 13.**
 - **applyZoom does not restart Chromium** — `applyzoom.sh` always sends `Ctrl+0` first to reset to 100 %, then steps to the target with `Ctrl+KP_Add` / `Ctrl+KP_Subtract`. Switching zoom is now a sub-second operation.
 - **TV Layout configuration moved out of `global-prefs`** — `tvRows`, `tvCols`, `tvClickAction` were dropped from `localStorage` and now live in the active preset on the server. Sessions with old localStorage keys are silently ignored.
 - **TV Wall HTML respects per-stream `tvFill` / `tvAlign`** when rendering each cell. Other players (`/static/[id]`, `/player/[id]`, `/player/[id].html`) keep `object-fit: contain`.

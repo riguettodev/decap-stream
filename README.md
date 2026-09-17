@@ -30,6 +30,15 @@ Xvfb (virtual display)
         └── x11vnc (live VNC access via noVNC)
 ```
 
+On hosts with an Intel/AMD GPU the whole stack can run on the GPU instead (see [GPU pipeline](#gpu-pipeline)):
+
+```
+sway (headless Wayland compositor, on the GPU)
+  └── Chromium (native Wayland, GPU raster + compositing + VA-API decode)
+        └── wf-recorder (dmabuf capture → VA-API encode) → ffmpeg (adds silent audio) → RTMP
+        └── wayvnc (live VNC access via noVNC)
+```
+
 All processes are managed by Supervisord. The web UI is a Next.js app that controls everything via a REST API.
 
 ## Features
@@ -43,6 +52,7 @@ All processes are managed by Supervisord. The web UI is a Next.js app that contr
 - **Optional authentication** — set `AUTH_USER` + `AUTH_PASS` to password-protect the entire UI; rolling 30-day session, no login required while active
 - **Fully configurable encoding** — resolution, scale, FPS, bitrate, preset, tune, GOP, threads, all per stream
 - **GPU acceleration** — optional per-stream Chromium GPU flag (disabled by default for container compatibility)
+- **Full GPU pipeline** — on Intel/AMD hosts, render, capture and encode every stream on the GPU (`GPU_PIPELINE=full` or per stream); see [GPU pipeline](#gpu-pipeline)
 - **Built-in HLS player** — watch any stream in the browser via a standalone HTML page optimized for TVs (Back + Mute buttons, reconnect on stall, direct MediaMTX connection when available)
 - **Pure mode** — global toggle in Settings to open Play Stream as a raw `.m3u8` link or Run HTML as a minimal `.html` page with no UI; works with native players and TV browsers
 - **Open in new tab** — global toggle in Settings to open any button in a new tab instead of navigating in place; saved in the browser
@@ -93,6 +103,7 @@ services:
       DEFAULT_TV_CLICK_ACTION: hls  # "hls" / "html" / "vnc"
       # FFMPEG_HWACCEL: nvenc         # GPU encoding: nvenc (NVIDIA), vaapi / qsv (Intel/AMD)
       # LD_LIBRARY_PATH: /usr/lib/wsl/lib  # WSL2 + nvenc only
+      # GPU_PIPELINE: full            # Intel/AMD: render + capture + encode on the GPU for every stream (needs /dev/dri)
     ports:
       - "3000:3000"             # Web UI — main entry point
       - "127.0.0.1:6080:6080"   # VNC  — localhost only; remote access via tunnel/VPN
@@ -159,6 +170,7 @@ Each stream gets a slug ID you define (e.g. `grafana-prod`):
 | `gop` | `60` | Keyframe interval (auto-calculated as 2x FPS in the UI) |
 | `threads` | `0` | ffmpeg encoding threads (`0` = auto-detect) |
 | `gpu` | `false` | Enable Chromium GPU acceleration (requires host GPU + container access) |
+| `displayBackend` | `xvfb` | `xvfb` (software), `wayland` (sway + Xwayland, GPU rendering) or `gpu` (whole pipeline on the GPU); overridden by `GPU_PIPELINE=full` |
 | `autoReload` | `false` | Reload the Chromium page on a fixed interval via CDP; toggled from the card menu |
 | `autoReloadInterval` | `3600` | Interval in seconds between automatic page reloads |
 | `zoom` | `1.0` | Chromium page zoom factor (snapped to one of 17 discrete steps from `0.25` to `5.0`) |
@@ -192,6 +204,39 @@ Each stream gets a slug ID you define (e.g. `grafana-prod`):
 - `streams.json` flat file + one directory per stream under `/app/data/streams/{id}/`
 - Each stream generates a `stream.conf` from a template; Supervisord picks it up via `[include]`
 - Display number `:n` is auto-allocated; VNC port = `5900+n`, debug port = `9221+n`
+- On the `gpu` display backend the program names stay the same: `xvfb-{id}` runs sway, `x11vnc-{id}` runs wayvnc, `ffmpeg-{id}` runs `capture-gpu.sh`; zoom keys go through wayvnc and autologin types through CDP (there is no X server for `xdotool`)
+- `/api/hls/*` is answered by a plain Node proxy in `docker/server.mjs` before the request reaches Next.js (`HLS_FAST_PROXY=false` sends it back through the Next.js route)
+
+## GPU pipeline
+
+Three display backends, chosen per stream in the form (Advanced → Display backend) or for every stream with env vars:
+
+| Backend | Chromium renders on | Capture | Encode | When |
+|---------|--------------------|---------|--------|------|
+| `xvfb` (default) | CPU | `x11grab` (CPU) | `FFMPEG_HWACCEL` (libx264 / nvenc / vaapi / qsv) | No GPU, or NVIDIA |
+| `wayland` | GPU (via Xwayland) | `x11grab` (reads frames back from the GPU) | `FFMPEG_HWACCEL` | WebGL/map pages on the old pipeline |
+| `gpu` | GPU (native Wayland) | dmabuf, zero-copy | VA-API | Intel/AMD GPU — lowest CPU |
+
+Measured on an Intel i5-7400 with its HD 630 iGPU, same page, same interval (% of one core):
+
+| Page | `xvfb` + VA-API encode | `gpu` |
+|------|-----------------------|-------|
+| Grafana dashboard, 1080p 5 fps | ~63% | ~12% |
+| 4-camera `<video>` page, 1080p 25 fps | ~140% | ~63% |
+
+The `gpu` backend also moves video decoding to the GPU, so the iGPU's media engine becomes the limit before the CPU does on camera-heavy walls.
+
+| Env | Default | Description |
+|-----|---------|-------------|
+| `GPU_PIPELINE` | unset | `full` puts every stream on the `gpu` backend, ignoring the per-stream choice. Leave unset on CPU-only hosts (e.g. Xeon without GPU). Needs `/dev/dri` mapped |
+| `DISPLAY_BACKEND` | `xvfb` | Backend for streams that don't set one (`xvfb` / `wayland` / `gpu`) |
+| `VAAPI_DEVICE` | `/dev/dri/renderD128` | Render node used by sway, wf-recorder and ffmpeg VA-API |
+| `FFMPEG_VAAPI_CSC` | `auto` | `xvfb`/`wayland` + `FFMPEG_HWACCEL=vaapi`: where RGB→NV12 happens. `gpu` = `scale_vaapi`, `cpu` = swscale, `auto` = GPU when the driver exposes `VAEntrypointVideoProc` |
+| `FFMPEG_VAAPI_RC` / `FFMPEG_VAAPI_QP` | `cbr` / `24` | VA-API rate control, used by both ffmpeg and wf-recorder |
+| `HLS_FAST_PROXY` | `true` | `false` serves `/api/hls/*` through the Next.js route instead of the Node proxy |
+| `MTX_*` | | Any MediaMTX setting, e.g. `MTX_HLSVARIANT=lowLatency` (default is `mpegts`, 2 s segments) or `MTX_LOGLEVEL=debug` |
+
+The image ships Debian's `intel-media-va-driver-non-free`: the free iHD driver lacks the video-processing kernels for Gen9–11 iGPUs (no `VAEntrypointVideoProc`), so `scale_vaapi` would fail there.
 
 ## Development
 

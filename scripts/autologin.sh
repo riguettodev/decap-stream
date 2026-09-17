@@ -131,6 +131,16 @@ http.get('http://localhost:${DEBUG_PORT}/json', res => {
 
 type_credentials() {
   local mode=$1
+  if [ "${DISPLAY_BACKEND:-xvfb}" = "gpu" ]; then
+    # backend gpu não tem X server (sem xdotool): digita pelo CDP, que escreve a string
+    # exata no campo já focado por detect_and_focus — ver scripts/cdptype.mjs.
+    # As credenciais vão por env (env:LOGIN_USER), nunca pela linha de comando.
+    local steps=()
+    [ "$mode" != "pass" ] && steps+=(selectall env:LOGIN_USER key:Tab)
+    steps+=(selectall env:LOGIN_PASS key:Enter)
+    timeout 20 node /opt/scripts/cdptype.mjs "$DEBUG_PORT" "${steps[@]}"
+    return
+  fi
   DISPLAY=${DISPLAY} xdotool search --sync --onlyvisible --class chromium windowfocus windowraise
   sleep 1
   if [ "$mode" != "pass" ]; then

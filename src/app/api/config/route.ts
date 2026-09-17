@@ -22,5 +22,8 @@ export async function GET() {
     tvCols: Math.max(1, Math.min(10, Number(process.env.DEFAULT_TV_COLS) || 4)),
     tvClickAction: parseTvClickAction(process.env.DEFAULT_TV_CLICK_ACTION) ?? "hls",
     selectedPresetId,
+    // GPU_PIPELINE=full forces every stream onto the gpu display backend — the stream
+    // form locks its display/rendering fields when this is on
+    gpuPipeline: (process.env.GPU_PIPELINE ?? "").toLowerCase().trim() === "full" ? "full" : "off",
   })
 }

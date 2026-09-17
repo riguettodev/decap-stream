@@ -3,7 +3,10 @@ import type { ViewerMode, ViewerSession } from "@/types/stream"
 
 const HLS_TTL_MS = 3 * 60 * 1000
 
-const hlsViewers = new Map<string, ViewerSession>()
+// On globalThis (not a module-level Map) because in production HLS requests are
+// answered by the fast proxy in docker/server.mjs, outside the Next.js bundle —
+// both sides must write to the same Map.
+const hlsViewers: Map<string, ViewerSession> = (globalThis.__hlsViewers ??= new Map())
 
 export function extractIp(req: NextRequest): string {
   return (

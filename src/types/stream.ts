@@ -31,11 +31,14 @@ export interface Stream {
 
   // Per-stream display backend. "xvfb" (default) = software-only X; "wayland" =
   // sway + rootful Xwayland, which gives the X server DRI3 and real GPU rendering
-  // (pair with gpuMode "hardware"). Absent → falls back to the DISPLAY_BACKEND env.
-  // NB: GPU rendering only helps WebGL/GL workloads (maps). It HURTS pages that
-  // decode video into <canvas> (camera portals): VA-API can't touch canvas frames
-  // and GPU compositing of large canvases costs more CPU. Decide per stream.
-  displayBackend?: "xvfb" | "wayland"
+  // (pair with gpuMode "hardware"), but still captures with x11grab; "gpu" = sway
+  // alone with native-Wayland Chromium, dmabuf capture and VAAPI encode — the whole
+  // pipeline on the GPU, gpuMode ignored. Absent → falls back to the DISPLAY_BACKEND
+  // env. GPU_PIPELINE=full forces "gpu" on every stream regardless of this field.
+  // NB: on "wayland", GPU rendering only helps WebGL/GL workloads (maps). It HURTS
+  // pages that decode video into <canvas> (camera portals): VA-API can't touch canvas
+  // frames and GPU compositing of large canvases costs more CPU. Decide per stream.
+  displayBackend?: "xvfb" | "wayland" | "gpu"
 
   zoom?: number  // Chromium --force-device-scale-factor; default 1.0; range 0.25–5.0
 
@@ -88,6 +91,7 @@ export interface ViewersResponse {
 
 declare global {
   var __vncViewers: Map<string, ViewerSession> | undefined
+  var __hlsViewers: Map<string, ViewerSession> | undefined
 }
 
 export const STREAM_DEFAULTS: Omit<StreamCreate, "id" | "name" | "url"> = {

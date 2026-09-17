@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { ChevronDown, ChevronRight, TriangleAlert } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -28,8 +28,8 @@ const TOOLTIPS = {
   delay:      "Seconds to wait after Chromium starts before ffmpeg begins capturing. Gives the page time to fully load and render.",
   gop:        "Keyframe interval in frames. Recommended: 2× FPS. Affects HLS segment alignment and seek accuracy. Auto-calculated from FPS unless manually changed.",
   threads:    "Number of ffmpeg encoding threads. 0 = auto-detect (recommended). Increasing this can reduce latency on multi-core systems at the cost of slightly reduced compression efficiency.",
-  gpuMode:    "Chromium rendering backend.\n• Disabled — uses --disable-gpu. Lowest CPU. WebGL/maps (Mapbox, MapLibre) won't render.\n• Software WebGL — SwiftShader CPU rasterizer. Makes WebGL/maps work without a GPU, but is CPU-heavy (a 1080p map can saturate several cores) and uses Chromium's --enable-unsafe-swiftshader (lower security; use only for trusted URLs).\n• Hardware GPU — no --disable-gpu; only works if the host exposes a real GPU to the container.",
-  displayBackend: "Virtual display server for this stream.\n• Xvfb (default) — software-only X. No DRI3, so Hardware GPU mode silently falls back to software.\n• Wayland (GPU) — sway + Xwayland, giving the X server DRI3 and real GPU rendering. Requires /dev/dri passthrough. Pair with Hardware GPU mode.\nOnly worth it for WebGL/GL pages (maps): it HELPS those. It HURTS pages that decode video into <canvas> (camera portals) — GPU can't offload canvas video and compositing costs more CPU. Choose per stream.",
+  gpuMode:    "Chromium rendering backend.\n• Disabled — uses --disable-gpu. Lowest CPU. WebGL/maps (Mapbox, MapLibre) won't render.\n• Software WebGL — SwiftShader CPU rasterizer. Makes WebGL/maps work without a GPU, but is CPU-heavy (a 1080p map can saturate several cores) and uses Chromium's --enable-unsafe-swiftshader (lower security; use only for trusted URLs).\n• Hardware GPU — no --disable-gpu; only works if the host exposes a real GPU to the container.\nIgnored on the Full GPU display backend, which always renders on the GPU.",
+  displayBackend: "Virtual display server for this stream.\n• Xvfb (default) — software-only X. No DRI3, so Hardware GPU mode silently falls back to software.\n• Wayland (GPU) — sway + Xwayland, giving the X server DRI3 and real GPU rendering. Requires /dev/dri passthrough. Pair with Hardware GPU mode. Only worth it for WebGL/GL pages (maps); it HURTS pages that decode video into <canvas> (camera portals).\n• Full GPU — rendering, capture and encoding all on the GPU (Intel/AMD VA-API), lowest CPU by far. Requires /dev/dri passthrough.\nGPU_PIPELINE=full puts every stream on Full GPU.",
 }
 
 function Tooltip({ text }: { text: string }) {
@@ -111,6 +111,17 @@ export function StreamForm({ initial }: Props) {
 
   const [gopManuallyEdited, setGopManuallyEdited] = useState(isEdit)
   const [advancedOpen, setAdvancedOpen] = useState(false)
+  // GPU_PIPELINE=full on the server overrides the per-stream display backend
+  const [gpuPipelineForced, setGpuPipelineForced] = useState(false)
+
+  useEffect(() => {
+    fetch("/api/config")
+      .then((r) => r.json())
+      .then((cfg: { gpuPipeline?: string }) => setGpuPipelineForced(cfg.gpuPipeline === "full"))
+      .catch(() => {})
+  }, [])
+
+  const effectiveBackend = gpuPipelineForced ? "gpu" : (form.displayBackend ?? "xvfb")
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
 
@@ -288,7 +299,9 @@ export function StreamForm({ initial }: Props) {
                 </div>
                 <Field label="Rendering (Chromium)" tooltip={TOOLTIPS.gpuMode}>
                   <Select
-                    value={form.gpuMode ?? "off"}
+                    value={effectiveBackend === "gpu" ? "hardware" : (form.gpuMode ?? "off")}
+                    disabled={effectiveBackend === "gpu"}
+                    className="disabled:opacity-50"
                     onChange={(e) => setGpuMode(e.target.value as "off" | "software" | "hardware")}
                   >
                     <option value="off" style={{ background: "#1a1a1a", color: "#ededed" }}>Disabled — lowest CPU, no WebGL (default)</option>
@@ -298,12 +311,18 @@ export function StreamForm({ initial }: Props) {
                 </Field>
                 <Field label="Display backend" tooltip={TOOLTIPS.displayBackend}>
                   <Select
-                    value={form.displayBackend ?? "xvfb"}
-                    onChange={(e) => set("displayBackend", e.target.value as "xvfb" | "wayland")}
+                    value={effectiveBackend}
+                    disabled={gpuPipelineForced}
+                    className="disabled:opacity-50"
+                    onChange={(e) => set("displayBackend", e.target.value as "xvfb" | "wayland" | "gpu")}
                   >
                     <option value="xvfb" style={{ background: "#1a1a1a", color: "#ededed" }}>Xvfb — software display (default)</option>
                     <option value="wayland" style={{ background: "#1a1a1a", color: "#ededed" }}>Wayland (GPU) — GL pages only; needs /dev/dri</option>
+                    <option value="gpu" style={{ background: "#1a1a1a", color: "#ededed" }}>Full GPU — render, capture and encode on the GPU; needs /dev/dri</option>
                   </Select>
+                  {gpuPipelineForced && (
+                    <p className="text-xs text-muted-foreground">Locked to Full GPU by GPU_PIPELINE=full on the server.</p>
+                  )}
                 </Field>
               </div>
             )}

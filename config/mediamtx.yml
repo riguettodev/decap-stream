@@ -1,17 +1,26 @@
-logLevel: debug
+# Qualquer chave daqui pode ser sobrescrita por env no container, sem rebuild:
+# MTX_<CHAVE EM MAIÚSCULAS> (ex.: MTX_LOGLEVEL=debug, MTX_HLSVARIANT=lowLatency).
+
+# debug grava cada requisição HLS inteira (~1 MB/min com 8 streams) e o supervisord
+# ainda copia isso pro arquivo — CPU gasta à toa. MTX_LOGLEVEL=debug só pra investigar.
+logLevel: info
 logDestinations: [stdout]
 
 # RTMP — ffmpeg publica aqui
 rtmp: yes
 rtmpAddress: :1935
 
-# HLS — frontend e player consomem daqui  
+# HLS — frontend e player consomem daqui
 hls: yes
 hlsAddress: :8888
 hlsAlwaysRemux: no
-hlsVariant: lowLatency
+# mpegts: um playlist só (áudio e vídeo no mesmo segmento) e segmentos de 2s, então o
+# player faz ~1 requisição/s por stream. lowLatency (partes de 200ms + playlist de áudio
+# separado) chegava a ~35 req/s com 8 TVs, todas atravessando o proxy do Next.js.
+# Custo: latência sobe de ~1s pra ~4-6s, irrelevante pra dashboard.
+hlsVariant: mpegts
 hlsSegmentCount: 7
-hlsSegmentDuration: 1s
+hlsSegmentDuration: 2s
 hlsPartDuration: 200ms
 
 # Desabilita o que não usa

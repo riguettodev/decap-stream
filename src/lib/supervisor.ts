@@ -54,6 +54,38 @@ function vaapiQpValue(): number {
   return Number.isFinite(qp) && qp >= 0 && qp <= 51 ? qp : 24
 }
 
+function vaapiDevice(): string {
+  return process.env.VAAPI_DEVICE?.trim() || "/dev/dri/renderD128"
+}
+
+// Does the VAAPI driver do video processing (VAEntrypointVideoProc)? Without it
+// scale_vaapi can't convert RGB→NV12 on the GPU. Asked once per process.
+let _vaapiVideoProc: boolean | null = null
+function vaapiHasVideoProc(): boolean {
+  if (_vaapiVideoProc !== null) return _vaapiVideoProc
+  try {
+    const out = execSync(`vainfo --display drm --device ${vaapiDevice()} 2>&1`, {
+      stdio: "pipe", shell: "/bin/sh", timeout: 10_000,
+    }).toString()
+    _vaapiVideoProc = out.includes("VAEntrypointVideoProc")
+  } catch {
+    _vaapiVideoProc = false
+  }
+  return _vaapiVideoProc
+}
+
+// Where the x11grab frame (BGRX) becomes NV12 before the VAAPI encoder.
+//   gpu  → hwupload,scale_vaapi=format=nv12 — measured on an i5-7400/HD 630: ffmpeg
+//          −26% CPU at 1080p 5fps and −35% at 1080p 25fps vs. the swscale path
+//   cpu  → format=nv12,hwupload (swscale)
+//   auto (default) → gpu when the driver exposes VAEntrypointVideoProc
+function vaapiCscOnGpu(): boolean {
+  const mode = (process.env.FFMPEG_VAAPI_CSC ?? "auto").toLowerCase().trim()
+  if (mode === "gpu") return true
+  if (mode === "cpu") return false
+  return vaapiHasVideoProc()
+}
+
 function buildEncoderFlags(stream: Stream): string {
   const { preset, tune, gop, bitrate, bufsize } = stream
   const hwaccel = (process.env.FFMPEG_HWACCEL ?? "").toLowerCase().trim()
@@ -75,8 +107,8 @@ function buildEncoderFlags(stream: Stream): string {
     ln(`-maxrate ${bitrate}`)
     ln(`-bufsize ${bufsize}`)
   } else if (hwaccel === "vaapi") {
-    ln(`-vaapi_device /dev/dri/renderD128`)
-    ln(`-vf 'format=nv12,hwupload'`)
+    ln(`-vaapi_device ${vaapiDevice()}`)
+    ln(vaapiCscOnGpu() ? `-vf 'hwupload,scale_vaapi=format=nv12'` : `-vf 'format=nv12,hwupload'`)
     ln(`-c:v h264_vaapi`)
     // h264_vaapi só aceita constrained_baseline | main | high — "baseline" aborta o encoder
     ln(`-profile:v constrained_baseline`)
@@ -156,7 +188,20 @@ const HWDECODE_FLAGS =
   "    --ignore-gpu-blocklist \\\n" +
   "    --enable-features=VaapiVideoDecoder,VaapiVideoDecodeLinuxGL \\\n"
 
+// gpu backend: Chromium is a native Wayland client of the stream's sway, rasterizes
+// and composites on the GPU and decodes <video> with VA-API. gpuMode and
+// CHROMIUM_HWDECODE don't apply — there is no software path on this backend.
+// Only one --enable-features may appear on the command line (Chromium keeps the
+// last one), so everything goes in this single flag.
+const GPU_BACKEND_FLAGS =
+  "    --ozone-platform=wayland \\\n" +
+  "    --ignore-gpu-blocklist \\\n" +
+  "    --enable-gpu-rasterization \\\n" +
+  "    --enable-zero-copy \\\n" +
+  "    --enable-features=AcceleratedVideoDecodeLinuxGL,AcceleratedVideoDecodeLinuxZeroCopyGL,VaapiVideoDecoder,VaapiIgnoreDriverChecks \\\n"
+
 function buildGpuFlags(stream: Stream): string {
+  if (displayBackend(stream) === "gpu") return GPU_BACKEND_FLAGS
   const mode = effectiveGpuMode(stream)
   const decode = hwDecodeEnabled() ? HWDECODE_FLAGS : ""
   switch (mode) {
@@ -189,22 +234,113 @@ function resolutionToChrome(res: string): string {
   return res.replace("x", ",")
 }
 
-// Display backend. "wayland" runs sway + rootful Xwayland, which gives the X
-// server DRI3 and therefore real GPU rendering; "xvfb" (default) is the legacy
-// software-only path. Decided per stream (stream.displayBackend), falling back to
-// the DISPLAY_BACKEND env for streams that don't set it. See scripts/display.sh.
-export function displayBackend(stream?: Stream): "wayland" | "xvfb" {
-  const perStream = stream?.displayBackend
-  if (perStream === "wayland" || perStream === "xvfb") return perStream
-  return (process.env.DISPLAY_BACKEND ?? "").toLowerCase().trim() === "wayland" ? "wayland" : "xvfb"
+// GPU_PIPELINE=full puts every stream on the gpu display backend, overriding the
+// per-stream choice. Leave it unset on hosts without a VAAPI GPU (e.g. CPU-only
+// Xeons): everything then stays on Xvfb + the FFMPEG_HWACCEL encoder.
+export function gpuPipelineForced(): boolean {
+  return (process.env.GPU_PIPELINE ?? "").toLowerCase().trim() === "full"
 }
 
-// sway refuses to run as root, so the wayland backend needs a dedicated user — and
-// so does x11vnc, whose MIT-SHM screen grab is denied cross-uid against a wl-owned
-// Xwayland (BadAccess). Both programs get this line ({{DISPLAY_USER}} in the
-// template); it's empty on xvfb.
+// Display backend (see scripts/display.sh):
+//   "xvfb"    (default) — software X; Chromium on the CPU; ffmpeg x11grab
+//   "wayland" — sway + rootful Xwayland: GPU rendering, but capture is still
+//               x11grab, which reads every frame back from the GPU
+//   "gpu"     — sway alone: GPU rendering, dmabuf capture and VAAPI encode, the
+//               frame never touches the CPU. Measured on an i5-7400/HD 630: a
+//               Grafana dashboard at 1080p 5fps went from ~63% to ~12% of a core,
+//               a 4-camera page at 1080p 25fps from ~140% to ~63%.
+// GPU_PIPELINE=full forces "gpu"; otherwise per stream (stream.displayBackend),
+// falling back to the DISPLAY_BACKEND env for streams that don't set it.
+export function displayBackend(stream?: Stream): "xvfb" | "wayland" | "gpu" {
+  if (gpuPipelineForced()) return "gpu"
+  const perStream = stream?.displayBackend
+  if (perStream === "wayland" || perStream === "xvfb" || perStream === "gpu") return perStream
+  const env = (process.env.DISPLAY_BACKEND ?? "").toLowerCase().trim()
+  return env === "wayland" || env === "gpu" ? env : "xvfb"
+}
+
+// sway refuses to run as root, so the wayland/gpu backends need a dedicated user —
+// and so does x11vnc, whose MIT-SHM screen grab is denied cross-uid against a
+// wl-owned Xwayland (BadAccess). Both programs get this line ({{DISPLAY_USER}} in
+// the template); it's empty on xvfb.
 function displayUserLine(stream: Stream): string {
-  return displayBackend(stream) === "wayland" ? `user=${process.env.DISPLAY_USER ?? "wl"}\n` : ""
+  return displayBackend(stream) !== "xvfb" ? `user=${process.env.DISPLAY_USER ?? "wl"}\n` : ""
+}
+
+function rtmpUrl(stream: Stream): string {
+  return `rtmp://localhost:1935/live/${stream.id}`
+}
+
+// {{CHROMIUM_PRELUDE}}: on gpu, Chromium needs the compositor's socket first
+function chromiumPrelude(stream: Stream): string {
+  return displayBackend(stream) === "gpu" ? ". /opt/scripts/wlenv.sh && " : ""
+}
+
+// {{VNC_COMMAND}}: x11vnc on the X backends, wayvnc on gpu (no X server there).
+// wayvnc runs as the display user but supervisord leaves HOME=/root, and wayvnc
+// exits on "Permission denied" reading /root/.config — point its config lookup at
+// the stream's runtime dir, where no config exists (defaults, no auth, like x11vnc).
+function buildVncCommand(stream: Stream): string {
+  if (displayBackend(stream) === "gpu") {
+    return `bash -c ". /opt/scripts/wlenv.sh && XDG_CONFIG_HOME=$XDG_RUNTIME_DIR exec wayvnc 0.0.0.0 ${stream.vncPort}"`
+  }
+  return `bash -c "while [ ! -e /tmp/.X11-unix/X$(echo $DISPLAY | cut -d: -f2 | cut -d. -f1) ]; do sleep 0.2; done; exec x11vnc -nopw -listen 0.0.0.0 -rfbport ${stream.vncPort} -xkb -forever -shared -threads"`
+}
+
+// "-p key=value" pairs for wf-recorder's h264_vaapi, mirroring the ffmpeg vaapi flags
+function buildWfRecorderParams(stream: Stream): string {
+  // no level: the x11grab path's "-level 3.1" undersells 1080p; let the driver pick
+  const params = [
+    "profile=constrained_baseline",
+    `g=${stream.gop}`,
+  ]
+  const rc = vaapiRcMode()
+  if (rc === "cqp") {
+    params.push("rc_mode=CQP", `qp=${vaapiQpValue()}`)
+  } else {
+    params.push(`rc_mode=${rc.toUpperCase()}`, `b=${stream.bitrate}`, `maxrate=${stream.bitrate}`, `bufsize=${stream.bufsize}`)
+  }
+  return params.map((p) => `-p ${p}`).join(" ")
+}
+
+// {{CAPTURE_COMMAND}} / {{CAPTURE_ENV}} for the ffmpeg-{id} program
+function buildCapture(stream: Stream): { command: string; env: string } {
+  if (displayBackend(stream) === "gpu") {
+    const env: Record<string, string | number> = {
+      STREAM_ID: stream.id,
+      STREAM_DELAY: stream.delay,
+      FPS: stream.fps,
+      VAAPI_DEVICE: vaapiDevice(),
+      WFR_PARAMS: buildWfRecorderParams(stream),
+      RTMP_URL: rtmpUrl(stream),
+    }
+    return {
+      command: "/opt/scripts/capture-gpu.sh",
+      env: Object.entries(env).map(([k, v]) => `${k}="${v}"`).join(","),
+    }
+  }
+  // No -shortest: on ffmpeg 7.1 it stalls an RTMP publish from x11grab + anullsrc
+  // after ~10s (mediamtx then drops it on read timeout, in a restart loop). Its job —
+  // exit when the display goes away — is done by -xerror: x11grab errors out as soon
+  // as the X server dies, and supervisord restarts the capture.
+  const command =
+    `bash -c "sleep ${stream.delay} && exec ffmpeg \\\n` +
+    `    -loglevel warning \\\n` +
+    `    -xerror \\\n` +
+    `    -threads ${stream.threads ?? 0} \\\n` +
+    `    -f x11grab \\\n` +
+    `    -video_size ${stream.resolution} \\\n` +
+    `    -framerate ${stream.fps} \\\n` +
+    `    -i ${stream.display} \\\n` +
+    `    -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 \\\n` +
+    `${buildEncoderFlags(stream)}\n` +
+    `    -c:a aac \\\n` +
+    `    -b:a 128k \\\n` +
+    `    -ar 44100 \\\n` +
+    `    -ac 2 \\\n` +
+    `    -fps_mode cfr \\\n` +
+    `    -f flv ${rtmpUrl(stream)}"`
+  return { command, env: `STREAM_ID="${stream.id}"` }
 }
 
 // normalizes scale: accepts "1280x720" or "1280:720", always saves as "1280:720"
@@ -217,12 +353,18 @@ export function provisionStream(stream: Stream): void {
   fs.mkdirSync(path.join(dir, "chrome-profile"), { recursive: true })
   fs.mkdirSync(path.join(DATA_DIR, "logs", stream.id), { recursive: true })
 
+  const capture = buildCapture(stream)
   const vars: Record<string, string | number> = {
     STREAM_ID:    stream.id,
     DISPLAY:      stream.display,
     RESOLUTION:   stream.resolution,
     DISPLAY_BACKEND: displayBackend(stream),
     DISPLAY_USER: displayUserLine(stream),
+    VAAPI_DEVICE: vaapiDevice(),
+    CHROMIUM_PRELUDE: chromiumPrelude(stream),
+    VNC_COMMAND:  buildVncCommand(stream),
+    CAPTURE_COMMAND: capture.command,
+    CAPTURE_ENV:  capture.env,
     CHROME_SIZE:  resolutionToChrome(stream.resolution),
     STREAM_URL:   stream.url,
     DEBUG_PORT:   stream.debugPort,
@@ -240,7 +382,6 @@ export function provisionStream(stream: Stream): void {
     PASS:         stream.pass ?? "",
     GPU_FLAGS:            buildGpuFlags(stream),
     ZOOM_FACTOR:          parseFloat(effectiveZoom(stream).toFixed(4)).toString(),
-    ENCODER_FLAGS:        buildEncoderFlags(stream),
     AUTO_RELOAD:          stream.autoReload ? "true" : "false",
     AUTO_RELOAD_INTERVAL: stream.autoReloadInterval ?? 3600,
     EXTENSIONS_FLAGS:     buildExtensionsFlags(stream),
@@ -346,9 +487,14 @@ export function captureThumb(streamId: string, delay = 60, opts: { force?: boole
   if (!stream) return
   const thumbPath = path.join(STREAMS_DIR, streamId, "thumb.jpg")
   const tmpPath = path.join(STREAMS_DIR, streamId, "thumb.tmp.jpg")
-  // capture directly from Xvfb — doesn't depend on RTMP/HLS being up
+  // capture directly from the display — doesn't depend on RTMP/HLS being up.
+  // gpu backend has no X server: grim screenshots the compositor (as PPM — Debian's
+  // grim is built without JPEG) and ffmpeg encodes the JPEG.
+  const grab = displayBackend(stream) === "gpu"
+    ? `STREAM_ID=${streamId} . /opt/scripts/wlenv.sh && grim -t ppm - | ffmpeg -y -loglevel error -f image2pipe -i - -frames:v 1 -q:v 2 "${tmpPath}"`
+    : `ffmpeg -y -loglevel error -f x11grab -video_size ${stream.resolution} -i ${stream.display} -vframes 1 -q:v 2 "${tmpPath}"`
   const child = spawn("bash", ["-c",
-    `sleep ${delay} && ffmpeg -y -loglevel error -f x11grab -video_size ${stream.resolution} -i ${stream.display} -vframes 1 -q:v 2 "${tmpPath}" && mv "${tmpPath}" "${thumbPath}"`
+    `sleep ${delay} && ${grab} && mv "${tmpPath}" "${thumbPath}"`
   ], { detached: true, stdio: "ignore" })
   child.unref()
 }

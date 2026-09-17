@@ -7,7 +7,7 @@ services:
     security_opt: [seccomp:unconfined]
     # gpus: all                     # NVIDIA (nvenc) — requer nvidia-container-toolkit
     # devices:
-    #   - /dev/dri:/dev/dri         # Intel/AMD — necessário p/ vaapi, qsv e o backend Wayland (GPU) por-stream
+    #   - /dev/dri:/dev/dri         # Intel/AMD — necessário p/ vaapi, qsv, GPU_PIPELINE e os backends wayland/gpu
     environment:
       TZ: America/Sao_Paulo
       DEFAULT_PURE_MODE: false
@@ -23,13 +23,20 @@ services:
       # SESSION_MAX_AGE_DAYS: 365   # Cookie de login, em dias (default 365)
       # LOGIN_CHECK_INTERVAL: 60    # Segundos entre checagens de sessão (default 60)
       # LOGIN_MAX_RETRIES: 5        # Tentativas consecutivas de login; 0 = ilimitado
-      # DISPLAY_BACKEND: wayland    # DEFAULT do backend de display; a escolha real é POR-STREAM (campo na UI).
-      #                             # Wayland (sway+Xwayland) dá DRI3/GPU: só ajuda páginas WebGL/mapas.
-      #                             # PIORA portais de câmera que decodam vídeo em <canvas>. Ligue por-stream.
-      # CHROMIUM_HWDECODE: "true"   # Decode VA-API para <video> nativo. NÃO ajuda vídeo desenhado em <canvas>.
-      # FFMPEG_HWACCEL: nvenc       # Encoding: nvenc / vaapi / qsv
-      # FFMPEG_VAAPI_RC: cbr        # vaapi rate control: cbr / vbr / cqp
+      # GPU_PIPELINE: full          # Intel/AMD: TODA stream no backend gpu (render + captura + encode na GPU).
+      #                             # Menor CPU de longe. Exige /dev/dri. Deixe sem em host só-CPU (Xeon etc).
+      # DISPLAY_BACKEND: wayland    # DEFAULT do backend de display (xvfb / wayland / gpu); a escolha real é
+      #                             # POR-STREAM (campo na UI). Ignorado com GPU_PIPELINE=full.
+      #                             # wayland (sway+Xwayland) dá DRI3/GPU mas ainda captura com x11grab:
+      #                             # só ajuda páginas WebGL/mapas e PIORA portais que decodam vídeo em <canvas>.
+      # CHROMIUM_HWDECODE: "true"   # Decode VA-API para <video> nativo (xvfb/wayland; o backend gpu já faz).
+      # FFMPEG_HWACCEL: nvenc       # Encoding nos backends xvfb/wayland: nvenc / vaapi / qsv
+      # FFMPEG_VAAPI_CSC: auto      # vaapi: conversão RGB→NV12 na GPU (gpu) ou CPU (cpu); auto detecta o driver
+      # FFMPEG_VAAPI_RC: cbr        # vaapi rate control: cbr / vbr / cqp (vale pro backend gpu também)
       # FFMPEG_VAAPI_QP: 24         # Quantizer para FFMPEG_VAAPI_RC=cqp (0-51)
+      # VAAPI_DEVICE: /dev/dri/renderD128   # render node da GPU (sway, wf-recorder, ffmpeg)
+      # HLS_FAST_PROXY: "false"     # volta o /api/hls pro Next.js (default: proxy Node direto, menos CPU)
+      # MTX_HLSVARIANT: lowLatency  # qualquer config do MediaMTX via MTX_*; lowLatency = ~1s de atraso, bem mais requisições
       # LD_LIBRARY_PATH: /usr/lib/wsl/lib   # WSL2 + nvenc
     ports:
       - "3000:3000"             # Web UI — único ponto de entrada

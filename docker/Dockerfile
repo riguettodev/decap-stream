@@ -12,7 +12,9 @@ COPY next.config.ts tsconfig.json postcss.config.mjs ./
 RUN npm run build
 
 # ── Stage 2: runtime ─────────────────────────────────────────────────────────
-FROM debian:bookworm-slim
+# trixie (Debian 13): o pipeline GPU (DISPLAY_BACKEND=gpu / GPU_PIPELINE=full) precisa
+# de wf-recorder >= 0.4 (captura dmabuf zero-copy), que o bookworm não tem (0.3).
+FROM debian:trixie-slim
 ENV DEBIAN_FRONTEND=noninteractive
 
 ARG MEDIAMTX_VERSION=1.17.1
@@ -21,14 +23,20 @@ ARG MEDIAMTX_VERSION=1.17.1
 # /var/lib/apt/lists: índice apt (apt-get update) — seguro cachear
 # /var/cache/apt: .deb baixados — seguro cachear
 # /var/lib/apt inteiro NÃO é cacheado: extended_states rastreia auto/manual e corromperia o estado entre builds
+#
+# non-free: intel-media-va-driver-non-free. O driver iHD livre não traz os kernels de
+# processamento de vídeo das iGPUs Gen9-11 — sem eles não existe VAEntrypointVideoProc,
+# e a conversão de cor RGB→NV12 (scale_vaapi) teria que ser feita na CPU.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    apt-get update \
+    sed -i 's/^Components: main.*$/Components: main non-free non-free-firmware/' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
     && apt-get install -y --no-install-recommends \
         xvfb x11vnc novnc websockify \
-        ffmpeg supervisor xdotool tzdata \
-        mesa-va-drivers intel-media-va-driver i965-va-driver vainfo \
+        ffmpeg supervisor xdotool tzdata python3 \
+        mesa-va-drivers intel-media-va-driver-non-free i965-va-driver vainfo \
         sway xwayland mesa-utils \
+        wf-recorder wayvnc grim \
         chromium \
         curl gnupg \
     && ln -sf /usr/share/zoneinfo/${TZ} /etc/localtime \
