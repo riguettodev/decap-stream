@@ -1,5 +1,5 @@
 // Custom entry point: patches http.createServer before Next.js starts, so that
-//  - WebSocket upgrade requests to /websockify are proxied to localhost:6080
+//  - WebSocket upgrade requests to .../websockify are proxied to localhost:6080
 //    (noVNC/websockify) without exposing that port publicly;
 //  - HLS requests (/api/hls/*) are answered by a plain Node proxy to MediaMTX,
 //    before they reach Next.js.
@@ -9,8 +9,34 @@ import crypto from "node:crypto"
 
 const _createServer = http.createServer.bind(http)
 
+// noVNC ≤1.3 opened its WebSocket at /websockify; noVNC 1.6 (Debian 13) resolves the
+// `path` setting against the page URL, so from /api/novnc/vnc.html it connects to
+// /api/novnc/websockify. Both belong to this proxy.
+function isVncUpgrade(req) {
+  try {
+    return new URL(req.url, "http://localhost").pathname.endsWith("/websockify")
+  } catch {
+    return false
+  }
+}
+
 function attachWebSocketProxy(server) {
-  server.on("upgrade", (req, socket, head) => {
+  // Next.js registers its own "upgrade" listener after this one, and it ends the
+  // socket whenever the path matches an app route — /api/novnc/websockify matches
+  // /api/novnc/[...path], so the browser saw "Connection closed before receiving a
+  // handshake response" while websockify was still answering. Keep VNC upgrades
+  // away from every other upgrade listener registered on this server.
+  const on = server.on.bind(server)
+  server.on = server.addListener = function (event, listener) {
+    if (event !== "upgrade") return on(event, listener)
+    return on(event, function (req, socket, head) {
+      if (isVncUpgrade(req)) return
+      return listener.call(this, req, socket, head)
+    })
+  }
+
+  on("upgrade", (req, socket, head) => {
+    if (!isVncUpgrade(req)) return
     const url = new URL(req.url, "http://localhost")
     const token = url.searchParams.get("token")
     const ip =
