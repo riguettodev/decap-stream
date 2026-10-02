@@ -4,7 +4,6 @@ import { execSync, spawn } from "child_process"
 import type { Stream } from "@/types/stream"
 import { getStream, swapStreamContent } from "./db"
 import { buildExtensionsFlags, buildBgNetFlag, writeForcelistPolicy, removeStreamExtensions, streamExtDir } from "./extensions"
-import { swapPresetSlots } from "./tvPresets"
 
 const DATA_DIR = process.env.DATA_DIR ?? "/app/data"
 const STREAMS_DIR = path.join(DATA_DIR, "streams")
@@ -424,9 +423,9 @@ function swapPaths(p: string, q: string): void {
   }
 }
 
-// Swaps the content of two streams (see swapStreamContent). Besides the records, what
-// is keyed by stream id but belongs to the content moves along: the TV Wall slots, the
-// Chromium profile (cookies — the login session survives the swap), the unpacked
+// Swaps the content of two streams (see swapStreamContent). Besides the records, the
+// state on disk that is keyed by stream id but belongs to the content moves along:
+// the Chromium profile (cookies — the login session survives the swap), the unpacked
 // extensions and the thumbnail. Chromium holds its profile open, so both streams go
 // down before the dirs move; afterwards each one returns to its own desiredState.
 export function swapStreams(a: Stream, b: Stream): [Stream, Stream] {
@@ -435,9 +434,6 @@ export function swapStreams(a: Stream, b: Stream): [Stream, Stream] {
   swapPaths(path.join(streamDir(a.id), "chrome-profile"), path.join(streamDir(b.id), "chrome-profile"))
   swapPaths(path.join(streamDir(a.id), "thumb.jpg"), path.join(streamDir(b.id), "thumb.jpg"))
   swapPaths(streamExtDir(a.id), streamExtDir(b.id))
-  // before streams.json: without tv-presets.json, reading it migrates the slots from
-  // tvPosition — that has to see the positions before the swap, or they swap twice
-  swapPresetSlots(a.id, b.id)
   const swapped = swapStreamContent(a, b)
   for (const s of swapped) {
     provisionStream(s)

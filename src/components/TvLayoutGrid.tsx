@@ -20,6 +20,7 @@ const noopStrategy = () => null
 import { CSS } from "@dnd-kit/utilities"
 import { Video, Trash2 } from "lucide-react"
 import { StreamContextMenu } from "@/components/StreamMenu"
+import { watchThumb } from "@/lib/thumbWatch"
 import type { Stream } from "@/types/stream"
 import type { TvPreset, TvClickAction } from "@/types/tvPreset"
 
@@ -31,11 +32,15 @@ export type { TvClickAction } from "@/types/tvPreset"
 //   trash            — droppable trash zone in the sidebar header
 
 // `version` (the stream's updatedAt) refetches right away when the stream changes —
-// a swap moves thumb.jpg to the other stream — instead of waiting for the 60s poll.
+// a swap moves thumb.jpg to the other stream — and then watches for the new capture
+// the (re)started stream takes ~60s later, instead of waiting for the 60s poll.
 function useStreamThumb(streamId: string | null | undefined, version?: string) {
   const [thumbSrc, setThumbSrc] = useState<string | null>(null)
   const [thumbError, setThumbError] = useState(false)
+  const seen = useRef({ streamId, version })
   useEffect(() => {
+    const changed = seen.current.streamId === streamId && seen.current.version !== version
+    seen.current = { streamId, version }
     if (!streamId) { setThumbSrc(null); setThumbError(false); return }
     let cancelled = false
     function refresh() {
@@ -47,7 +52,8 @@ function useStreamThumb(streamId: string | null | undefined, version?: string) {
     }
     refresh()
     const interval = setInterval(refresh, 60000)
-    return () => { cancelled = true; clearInterval(interval) }
+    const stopWatch = changed ? watchThumb(streamId, refresh) : null
+    return () => { cancelled = true; clearInterval(interval); stopWatch?.() }
   }, [streamId, version])
   return { thumbSrc, thumbError }
 }

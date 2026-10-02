@@ -28,6 +28,20 @@ export async function GET(_req: Request, { params }: Ctx) {
   return new Response("not found", { status: 404 })
 }
 
+// Just the Last-Modified of thumb.jpg — the UI polls it (watchThumb) to know when a
+// new capture landed without downloading the image, and never triggers a capture.
+export async function HEAD(_req: Request, { params }: Ctx) {
+  const { id } = await params
+  const thumbPath = path.join(DATA_DIR, "streams", id, "thumb.jpg")
+  if (!fs.existsSync(thumbPath)) return new Response(null, { status: 404 })
+  return new Response(null, {
+    headers: {
+      "Last-Modified": fs.statSync(thumbPath).mtime.toUTCString(),
+      "Cache-Control": "no-cache, no-store",
+    },
+  })
+}
+
 export async function POST(_req: Request, { params }: Ctx) {
   const { id } = await params
   if (!getStream(id)) return NextResponse.json({ error: "not found" }, { status: 404 })

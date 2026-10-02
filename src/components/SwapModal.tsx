@@ -89,8 +89,8 @@ export function SwapModal({ stream, onClose, onRefresh, onLocalStatus }: Props) 
 
         <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-3">
           <p className="text-xs text-muted-foreground">
-            Name, URL, login, settings, extensions and the Chrome session (cookies) move between the two streams,
-            along with their card position and TV Wall slots. The ids stay, so the TVs and players pointing at each one switch content.
+            Name, URL, login, settings, extensions and the Chrome session (cookies) trade places: each card, TV Wall slot
+            and TV starts showing what the other one showed.
           </p>
 
           {loading ? (

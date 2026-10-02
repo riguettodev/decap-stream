@@ -6,6 +6,7 @@ import { ExtensionsModal } from "@/components/ExtensionsModal"
 import { SwapModal } from "@/components/SwapModal"
 import { StreamMenuContent } from "@/components/StreamMenu"
 import { cn } from "@/lib/utils"
+import { watchThumb } from "@/lib/thumbWatch"
 import type { Stream } from "@/types/stream"
 import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities"
 import type { DraggableAttributes } from "@dnd-kit/core"
@@ -135,6 +136,15 @@ export function StreamCard({ stream, status, localStatus, cardSize = "md", onRef
     }, delay)
     return () => clearTimeout(timer)
   }, [thumbError, thumbKey])
+
+  // updatedAt changes on swap/restart/start/edit, and a (re)started stream captures a
+  // new thumb ~60s later: pick it up when it lands instead of keeping the old one.
+  const seenUpdatedAt = useRef(stream.updatedAt)
+  useEffect(() => {
+    if (stream.updatedAt === seenUpdatedAt.current) return
+    seenUpdatedAt.current = stream.updatedAt
+    return watchThumb(stream.id, () => setThumbKey((k) => k + 1))
+  }, [stream.id, stream.updatedAt])
 
   function navigate(url: string) {
     if (globalPrefs.newTab) window.open(url, "_blank")

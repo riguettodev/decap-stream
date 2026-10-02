@@ -4,7 +4,7 @@
 
 ### Added
 
-- **Swap two streams between screens** — "Swap with..." in the card menu moves the content of two streams (name, URL, login, settings, extensions and the logged-in Chrome session) between them, along with its card position and TV Wall slots. Each stream id stays, so the TVs and players that point at it show the other content with nothing to reconfigure.
+- **Swap two streams between screens** — "Swap with..." in the card menu moves the content of two streams (name, URL, login, settings, extensions and the logged-in Chrome session) between them. Each card, TV Wall slot and TV then shows what the other one showed, with nothing to retype or reconfigure.
 - **Full GPU mode** — on servers with an Intel or AMD GPU, streams can be rendered, captured and encoded entirely on the GPU, using several times less CPU.
 - **Full GPU mode for every stream at once** — set `GPU_PIPELINE=full` on the container, or pick it per stream under Advanced → Display backend.
 - **Per-stream Chromium extensions** — load unpacked extensions (ZIP upload, slug-sanitized into `/app/data/extensions/{streamId}/`) and/or Chrome Web Store IDs via `ExtensionInstallForcelist` managed policies; "Extensions..." button in the card menu opens a modal with two tabs (Web Store IDs, Upload) and an Apply & Restart action that bounces only Chromium + autologin.
@@ -30,6 +30,7 @@
 
 - Right-click on a TV Layout cell no longer triggers a drag.
 - "Extensions..." from the TV Layout right-click menu now opens the modal (it used to close along with the menu).
+- Thumbnails pick up the new screenshot once it's taken — after Refresh thumbnail, a restart or a swap they used to keep showing the old one.
 - Reopening the zoom menu immediately after changing the value used to show the previous value briefly; an optimistic update + prop-sync `useEffect` now keep the UI consistent.
 
 ## Decap Stream v1.1.0

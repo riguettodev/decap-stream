@@ -289,12 +289,6 @@ export default function GalleryPage() {
     if (manual) setRefreshing(false)
   }, [])
 
-  // presets too: a swap exchanges the two stream ids in the TV Wall slots
-  const refreshStreams = useCallback(() => {
-    fetchStreams()
-    fetchPresets()
-  }, [fetchStreams, fetchPresets])
-
   const fetchStatuses = useCallback(async (list: Stream[]) => {
     if (list.length === 0) return
     const res = await fetch("/api/streams/statuses")
@@ -450,7 +444,7 @@ export default function GalleryPage() {
               onSlotsSaved={fetchPresets}
               statuses={statuses}
               localStatuses={localStatuses}
-              onRefresh={refreshStreams}
+              onRefresh={() => fetchStreams()}
               onLocalStatus={setLocalStatus}
               onStreamUpdate={patchStream}
             />
@@ -486,7 +480,7 @@ export default function GalleryPage() {
                       status={statuses[s.id]}
                       localStatus={localStatuses[s.id] ?? null}
                       cardSize={cardSize}
-                      onRefresh={refreshStreams}
+                      onRefresh={() => fetchStreams()}
                       onLocalStatus={setLocalStatus}
                       onStreamUpdate={patchStream}
                       globalPrefs={globalPrefs}

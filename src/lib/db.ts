@@ -44,9 +44,9 @@ export function deleteStream(id: string): void {
 }
 
 // Swaps what two streams show. Each one keeps its screen: the id (which TVs and
-// players point at), the display/ports derived from it and its running state.
-// Everything else is content and moves — card position included — so a new field
-// moves too unless it's added here.
+// players point at), the display/ports derived from it, its place in the card grid
+// and in the TV Wall slots (those follow the id), and its running state. Everything
+// else is content and moves — so a new field moves too unless it's added here.
 export function swapStreamContent(a: Stream, b: Stream): [Stream, Stream] {
   const now = new Date().toISOString()
   const onScreen = (content: Stream, screen: Stream): Stream => ({
@@ -55,7 +55,9 @@ export function swapStreamContent(a: Stream, b: Stream): [Stream, Stream] {
     display: screen.display,
     vncPort: screen.vncPort,
     debugPort: screen.debugPort,
+    order: screen.order,
     desiredState: screen.desiredState,
+    tvPosition: screen.tvPosition,
     createdAt: screen.createdAt,
     updatedAt: now,
   })

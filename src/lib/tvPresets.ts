@@ -182,18 +182,6 @@ export function updatePreset(id: string, patch: UpdatePresetPatch): TvPreset | u
   return next
 }
 
-// Exchanges two stream ids in every preset's slots, so each slot keeps showing the
-// same content after a swap (see swapStreams).
-export function swapPresetSlots(a: string, b: string): void {
-  const file = readPresetsFile()
-  for (const p of file.presets) {
-    if (!p.slots.some((s) => s === a || s === b)) continue
-    p.slots = p.slots.map((s) => (s === a ? b : s === b ? a : s))
-    p.updatedAt = nowIso()
-  }
-  writeRaw(file)
-}
-
 export function deletePreset(id: string): boolean {
   const file = readPresetsFile()
   const before = file.presets.length

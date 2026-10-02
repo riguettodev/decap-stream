@@ -5,6 +5,7 @@ import { Play, Square, Pencil, RotateCcw, Trash2, Copy, Check, ImageUp, Wrench, 
 import { ExtensionsModal } from "@/components/ExtensionsModal"
 import { SwapModal } from "@/components/SwapModal"
 import { cn } from "@/lib/utils"
+import { watchThumb } from "@/lib/thumbWatch"
 import type { Stream } from "@/types/stream"
 
 export interface StreamMenuProps {
@@ -54,7 +55,6 @@ function copyToClipboard(text: string) {
 export function StreamMenuContent(props: StreamMenuProps) {
   const { stream, status, localStatus, onClose, onRefresh, onLocalStatus, onStreamUpdate, onOpenExtensions, onOpenSwap } = props
   const [copied, setCopied] = useState(false)
-  const [thumbCapturing, setThumbCapturing] = useState(false)
   const [autoReload, setAutoReload] = useState(stream.autoReload ?? false)
   const [autoReloadMins, setAutoReloadMins] = useState(Math.round((stream.autoReloadInterval ?? 3600) / 60))
   const [zoom, setZoom] = useState<number>(stream.zoom ?? 1)
@@ -63,9 +63,6 @@ export function StreamMenuContent(props: StreamMenuProps) {
   useEffect(() => { setZoom(stream.zoom ?? 1) }, [stream.zoom])
   const [tvFill, setTvFill] = useState(stream.tvFill ?? false)
   const [tvAlign, setTvAlign] = useState<"left" | "center" | "right">(stream.tvAlign ?? "center")
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current) }, [])
-
   const menuItem = "w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-[#2a2a2a] active:bg-[#333] transition-colors cursor-pointer"
 
   async function action(act: string, optimisticStatus: string) {
@@ -154,23 +151,12 @@ export function StreamMenuContent(props: StreamMenuProps) {
     })
   }
 
-  async function refreshThumb() {
+  // The menu closes right away, so this outlives it: wait for the new capture to
+  // land (the old thumb answering 200 doesn't mean it did), then refresh.
+  function refreshThumb() {
     onClose()
-    setThumbCapturing(true)
-    if (pollRef.current) clearInterval(pollRef.current)
-    await fetch(`/api/streams/${stream.id}/thumb`, { method: "POST" })
-    const deadline = Date.now() + 30000
-    pollRef.current = setInterval(async () => {
-      const res = await fetch(`/api/streams/${stream.id}/thumb?t=${Date.now()}`, { cache: "no-store" })
-      if (res.ok) {
-        clearInterval(pollRef.current!); pollRef.current = null
-        setThumbCapturing(false)
-        onRefresh()
-      } else if (Date.now() >= deadline) {
-        clearInterval(pollRef.current!); pollRef.current = null
-        setThumbCapturing(false)
-      }
-    }, 2000)
+    watchThumb(stream.id, onRefresh, 60_000)
+    void fetch(`/api/streams/${stream.id}/thumb`, { method: "POST" })
   }
 
   async function confirmRemove() {
@@ -209,9 +195,8 @@ export function StreamMenuContent(props: StreamMenuProps) {
         {copied ? "Copied!" : "Copy RTMP"}
       </button>
       <div className="border-t border-border" />
-      <button onClick={refreshThumb} disabled={thumbCapturing} className={cn(menuItem, thumbCapturing && "opacity-50")}>
-        <ImageUp className="w-3.5 h-3.5" />
-        {thumbCapturing ? "Capturing..." : "Refresh thumbnail"}
+      <button onClick={refreshThumb} className={menuItem}>
+        <ImageUp className="w-3.5 h-3.5" /> Refresh thumbnail
       </button>
       <button onClick={() => { onClose(); onOpenExtensions() }} className={cn(menuItem, "justify-between")}>
         <span className="flex items-center gap-2">
