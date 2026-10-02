@@ -2,8 +2,9 @@ import fs from "fs"
 import path from "path"
 import { execSync, spawn } from "child_process"
 import type { Stream } from "@/types/stream"
-import { getStream } from "./db"
-import { buildExtensionsFlags, buildBgNetFlag, writeForcelistPolicy, removeStreamExtensions } from "./extensions"
+import { getStream, swapStreamContent } from "./db"
+import { buildExtensionsFlags, buildBgNetFlag, writeForcelistPolicy, removeStreamExtensions, streamExtDir } from "./extensions"
+import { swapPresetSlots } from "./tvPresets"
 
 const DATA_DIR = process.env.DATA_DIR ?? "/app/data"
 const STREAMS_DIR = path.join(DATA_DIR, "streams")
@@ -408,6 +409,43 @@ export function recreateStream(id: string): void {
   fs.rmSync(path.join(dir, "chrome-profile"), { recursive: true, force: true })
   provisionStream(stream)
   startStream(id)
+}
+
+// Renames p ↔ q (same filesystem: instant, nothing copied). Either may be missing.
+function swapPaths(p: string, q: string): void {
+  const tmp = `${p}.swap-${Date.now()}`
+  const hasP = fs.existsSync(p)
+  const hasQ = fs.existsSync(q)
+  if (hasP) fs.renameSync(p, tmp)
+  if (hasQ) fs.renameSync(q, p)
+  if (hasP) {
+    fs.mkdirSync(path.dirname(q), { recursive: true })
+    fs.renameSync(tmp, q)
+  }
+}
+
+// Swaps the content of two streams (see swapStreamContent). Besides the records, what
+// is keyed by stream id but belongs to the content moves along: the TV Wall slots, the
+// Chromium profile (cookies — the login session survives the swap), the unpacked
+// extensions and the thumbnail. Chromium holds its profile open, so both streams go
+// down before the dirs move; afterwards each one returns to its own desiredState.
+export function swapStreams(a: Stream, b: Stream): [Stream, Stream] {
+  stopStream(a.id)
+  stopStream(b.id)
+  swapPaths(path.join(streamDir(a.id), "chrome-profile"), path.join(streamDir(b.id), "chrome-profile"))
+  swapPaths(path.join(streamDir(a.id), "thumb.jpg"), path.join(streamDir(b.id), "thumb.jpg"))
+  swapPaths(streamExtDir(a.id), streamExtDir(b.id))
+  // before streams.json: without tv-presets.json, reading it migrates the slots from
+  // tvPosition — that has to see the positions before the swap, or they swap twice
+  swapPresetSlots(a.id, b.id)
+  const swapped = swapStreamContent(a, b)
+  for (const s of swapped) {
+    provisionStream(s)
+    // provisionStream's `update` autostarts the programs whose conf changed
+    if (s.desiredState === "running") restartStream(s.id)
+    else stopStream(s.id)
+  }
+  return swapped
 }
 
 export function startStream(id: string): void {

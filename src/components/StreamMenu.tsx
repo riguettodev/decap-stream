@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { Play, Square, Pencil, RotateCcw, Trash2, Copy, Check, ImageUp, Wrench, RefreshCw, Maximize2, AlignLeft, AlignCenter, AlignRight, Puzzle, ZoomIn } from "lucide-react"
+import { Play, Square, Pencil, RotateCcw, Trash2, Copy, Check, ImageUp, Wrench, RefreshCw, Maximize2, AlignLeft, AlignCenter, AlignRight, Puzzle, ZoomIn, ArrowLeftRight } from "lucide-react"
 import { ExtensionsModal } from "@/components/ExtensionsModal"
+import { SwapModal } from "@/components/SwapModal"
 import { cn } from "@/lib/utils"
 import type { Stream } from "@/types/stream"
 
@@ -15,6 +16,7 @@ export interface StreamMenuProps {
   onLocalStatus: (id: string, s: string | null) => void
   onStreamUpdate?: (id: string, patch: Partial<Stream>) => void
   onOpenExtensions: () => void
+  onOpenSwap: () => void
   /** Optional override — if provided, replaces the built-in window.confirm() flow. */
   onDelete?: () => void
 }
@@ -50,7 +52,7 @@ function copyToClipboard(text: string) {
  * panel — the caller is responsible for the floating wrapper/positioning.
  */
 export function StreamMenuContent(props: StreamMenuProps) {
-  const { stream, status, localStatus, onClose, onRefresh, onLocalStatus, onStreamUpdate, onOpenExtensions } = props
+  const { stream, status, localStatus, onClose, onRefresh, onLocalStatus, onStreamUpdate, onOpenExtensions, onOpenSwap } = props
   const [copied, setCopied] = useState(false)
   const [thumbCapturing, setThumbCapturing] = useState(false)
   const [autoReload, setAutoReload] = useState(stream.autoReload ?? false)
@@ -183,6 +185,9 @@ export function StreamMenuContent(props: StreamMenuProps) {
     <>
       <button onClick={() => { onClose(); window.location.href = `/streams/${stream.id}/edit` }} className={menuItem}>
         <Pencil className="w-3.5 h-3.5" /> Edit
+      </button>
+      <button onClick={() => { onClose(); onOpenSwap() }} className={menuItem}>
+        <ArrowLeftRight className="w-3.5 h-3.5" /> Swap with...
       </button>
       <button onClick={() => action("restart", "restarting")} className={menuItem}>
         <RotateCcw className="w-3.5 h-3.5" /> Restart
@@ -317,10 +322,18 @@ export function StreamMenuContent(props: StreamMenuProps) {
  * Floating context menu positioned at (x, y) viewport coords. Used for
  * right-click on TV Layout cells. Click-outside and ESC dismiss.
  */
-export function StreamContextMenu({ x, y, ...menuProps }: Omit<StreamMenuProps, "onOpenExtensions"> & { x: number; y: number }) {
-  const [extOpen, setExtOpen] = useState(false)
+export function StreamContextMenu({ x, y, ...menuProps }: Omit<StreamMenuProps, "onOpenExtensions" | "onOpenSwap"> & { x: number; y: number }) {
+  const [modal, setModal] = useState<"extensions" | "swap" | null>(null)
+  const [menuHidden, setMenuHidden] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ x, y })
+
+  // The items close the menu right before opening a modal, and the modal lives in
+  // this component — unmounting on the item's close would take the modal with it.
+  // So an item only hides the panel; the parent is told once no modal is open.
+  useEffect(() => {
+    if (menuHidden && !modal) menuProps.onClose()
+  }, [menuHidden, modal]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Clamp to viewport once mounted (so menu doesn't overflow on right/bottom edges).
   useEffect(() => {
@@ -333,26 +346,44 @@ export function StreamContextMenu({ x, y, ...menuProps }: Omit<StreamMenuProps, 
   }, [x, y])
 
   useEffect(() => {
+    if (menuHidden) return
     function onKey(e: KeyboardEvent) { if (e.key === "Escape") menuProps.onClose() }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [menuProps])
+  }, [menuProps, menuHidden])
 
   return (
     <>
-      {extOpen && (
-        <ExtensionsModal streamId={menuProps.stream.id} streamName={menuProps.stream.name} onClose={() => setExtOpen(false)} />
+      {modal === "extensions" && (
+        <ExtensionsModal streamId={menuProps.stream.id} streamName={menuProps.stream.name} onClose={() => setModal(null)} />
       )}
-      <div className="fixed inset-0 z-[100]" onClick={menuProps.onClose} onContextMenu={(e) => { e.preventDefault(); menuProps.onClose() }} />
-      <div
-        ref={ref}
-        style={{ left: pos.x, top: pos.y, background: "#1c1c1c" }}
-        className="fixed z-[101] min-w-[200px] rounded-lg border border-border shadow-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-        onContextMenu={(e) => e.preventDefault()}
-      >
-        <StreamMenuContent {...menuProps} onOpenExtensions={() => setExtOpen(true)} />
-      </div>
+      {modal === "swap" && (
+        <SwapModal
+          stream={menuProps.stream}
+          onClose={() => setModal(null)}
+          onRefresh={menuProps.onRefresh}
+          onLocalStatus={menuProps.onLocalStatus}
+        />
+      )}
+      {!menuHidden && (
+        <>
+          <div className="fixed inset-0 z-[100]" onClick={menuProps.onClose} onContextMenu={(e) => { e.preventDefault(); menuProps.onClose() }} />
+          <div
+            ref={ref}
+            style={{ left: pos.x, top: pos.y, background: "#1c1c1c" }}
+            className="fixed z-[101] min-w-[200px] rounded-lg border border-border shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+            onContextMenu={(e) => e.preventDefault()}
+          >
+            <StreamMenuContent
+              {...menuProps}
+              onClose={() => setMenuHidden(true)}
+              onOpenExtensions={() => setModal("extensions")}
+              onOpenSwap={() => setModal("swap")}
+            />
+          </div>
+        </>
+      )}
     </>
   )
 }

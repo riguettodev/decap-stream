@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useLayoutEffect } from "react"
 import { MoreHorizontal, Play, Globe, Monitor, Circle, Video, GripVertical } from "lucide-react"
 import { ExtensionsModal } from "@/components/ExtensionsModal"
+import { SwapModal } from "@/components/SwapModal"
 import { StreamMenuContent } from "@/components/StreamMenu"
 import { cn } from "@/lib/utils"
 import type { Stream } from "@/types/stream"
@@ -81,6 +82,7 @@ export function StreamCard({ stream, status, localStatus, cardSize = "md", onRef
   const [thumbError, setThumbError] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [extOpen, setExtOpen] = useState(false)
+  const [swapOpen, setSwapOpen] = useState(false)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(null)
@@ -186,6 +188,14 @@ export function StreamCard({ stream, status, localStatus, cardSize = "md", onRef
           onClose={() => setExtOpen(false)}
         />
       )}
+      {swapOpen && (
+        <SwapModal
+          stream={stream}
+          onClose={() => setSwapOpen(false)}
+          onRefresh={onRefresh}
+          onLocalStatus={onLocalStatus}
+        />
+      )}
       <div className={cn("relative rounded-lg border border-border bg-card flex flex-col w-full transition-opacity", sc.card, CARD_WIDTHS[cardSize], isDragging && "opacity-40")}>
 
         {/* Drag handle strip */}
@@ -206,9 +216,10 @@ export function StreamCard({ stream, status, localStatus, cardSize = "md", onRef
               <Video className="w-5 h-5 text-muted-foreground/25" />
             </div>
           )}
+          {/* updatedAt: a swap moves thumb.jpg, and this card may not be the one that asked for it */}
           <img
-            key={thumbKey}
-            src={`/api/streams/${stream.id}/thumb?t=${thumbKey}`}
+            key={`${thumbKey}-${stream.updatedAt}`}
+            src={`/api/streams/${stream.id}/thumb?t=${thumbKey}-${stream.updatedAt}`}
             className={cn("w-full h-full object-cover", thumbError && "invisible")}
             onError={() => setThumbError(true)}
             onLoad={() => setThumbError(false)}
@@ -246,6 +257,7 @@ export function StreamCard({ stream, status, localStatus, cardSize = "md", onRef
                       onLocalStatus={onLocalStatus}
                       onStreamUpdate={onStreamUpdate}
                       onOpenExtensions={() => setExtOpen(true)}
+                      onOpenSwap={() => setSwapOpen(true)}
                       onDelete={() => setConfirmDelete(true)}
                     />
                   </div>

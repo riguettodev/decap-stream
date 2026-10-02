@@ -61,6 +61,7 @@ All processes are managed by Supervisord. The web UI is a Next.js app that contr
 - **Per-stream Chromium page zoom** — pick one of 17 discrete zoom steps (25 % – 500 %) from the card menu; applied as real page zoom (`Ctrl+`/`Ctrl-`) via `xdotool` without restarting Chromium
 - **TV Wall presets** — save multiple named TV Wall layouts (`rows × cols`, click action, drag-and-drop slots) and switch between them from the header dropdown; `/api/tv-wall?preset=<id>` opens the corresponding wall fullscreen
 - **TV Wall fill / align** — toggle `object-fit: cover` and pick left/center/right alignment per stream; only affects the TV Wall, single-stream players keep `contain`
+- **Swap streams between screens** — "Swap with..." in the card menu exchanges the content of two streams (name, URL, login, settings, extensions and the Chrome session), keeping each one's card position and TV Wall slots; the stream ids stay put, so the TVs and players pointing at them switch content
 - **Right-click in TV Layout** — every cell with a stream exposes the full card menu on right-click (Edit, Restart, Recreate, Copy RTMP, Refresh thumb, Extensions, Zoom, ...)
 - **Player client-side auto-reload** — global toggle in Settings to reload the HLS player itself on a configurable interval (in minutes)
 - **Mobile-friendly UI** — responsive layout for phones (< 640 px): Add and Refresh become floating action buttons in the bottom-right corner, cards fill the screen width automatically, no horizontal scroll; installable as a PWA with separate light/dark home-screen icons

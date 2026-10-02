@@ -43,6 +43,28 @@ export function deleteStream(id: string): void {
   writeStreams(readStreams().filter((s) => s.id !== id))
 }
 
+// Swaps what two streams show. Each one keeps its screen: the id (which TVs and
+// players point at), the display/ports derived from it and its running state.
+// Everything else is content and moves — card position included — so a new field
+// moves too unless it's added here.
+export function swapStreamContent(a: Stream, b: Stream): [Stream, Stream] {
+  const now = new Date().toISOString()
+  const onScreen = (content: Stream, screen: Stream): Stream => ({
+    ...content,
+    id: screen.id,
+    display: screen.display,
+    vncPort: screen.vncPort,
+    debugPort: screen.debugPort,
+    desiredState: screen.desiredState,
+    createdAt: screen.createdAt,
+    updatedAt: now,
+  })
+  const nextA = onScreen(b, a)
+  const nextB = onScreen(a, b)
+  writeStreams(readStreams().map((s) => (s.id === a.id ? nextA : s.id === b.id ? nextB : s)))
+  return [nextA, nextB]
+}
+
 // Allocates display number and VNC/debug ports without conflicting with existing streams
 export function allocatePorts(): {
   display: string

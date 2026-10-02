@@ -30,7 +30,9 @@ export type { TvClickAction } from "@/types/tvPreset"
 //   sb:<streamId>    — draggable item in the sidebar
 //   trash            — droppable trash zone in the sidebar header
 
-function useStreamThumb(streamId: string | null | undefined) {
+// `version` (the stream's updatedAt) refetches right away when the stream changes —
+// a swap moves thumb.jpg to the other stream — instead of waiting for the 60s poll.
+function useStreamThumb(streamId: string | null | undefined, version?: string) {
   const [thumbSrc, setThumbSrc] = useState<string | null>(null)
   const [thumbError, setThumbError] = useState(false)
   useEffect(() => {
@@ -46,7 +48,7 @@ function useStreamThumb(streamId: string | null | undefined) {
     refresh()
     const interval = setInterval(refresh, 60000)
     return () => { cancelled = true; clearInterval(interval) }
-  }, [streamId])
+  }, [streamId, version])
   return { thumbSrc, thumbError }
 }
 
@@ -62,7 +64,7 @@ function TvCell({ slotIndex, stream, clickAction, pureMode, newTab, onContextMen
     id: `slot:${slotIndex}`,
   })
   const style = stream ? { transform: CSS.Transform.toString(transform), transition } : undefined
-  const { thumbSrc, thumbError } = useStreamThumb(stream?.id)
+  const { thumbSrc, thumbError } = useStreamThumb(stream?.id, stream?.updatedAt)
   const dragOccurredRef = useRef(false)
 
   useEffect(() => {
@@ -131,7 +133,7 @@ function TvCell({ slotIndex, stream, clickAction, pureMode, newTab, onContextMen
 }
 
 function SidebarItemPreview({ stream }: { stream: Stream }) {
-  const { thumbSrc, thumbError } = useStreamThumb(stream.id)
+  const { thumbSrc, thumbError } = useStreamThumb(stream.id, stream.updatedAt)
   return (
     <div
       className="relative w-[220px] aspect-video bg-[#0a0a0a] border border-white/30 rounded overflow-hidden select-none shadow-2xl"
@@ -160,7 +162,7 @@ function SidebarItem({ stream }: { stream: Stream }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `sb:${stream.id}`,
   })
-  const { thumbSrc, thumbError } = useStreamThumb(stream.id)
+  const { thumbSrc, thumbError } = useStreamThumb(stream.id, stream.updatedAt)
   return (
     <div
       ref={setNodeRef}
